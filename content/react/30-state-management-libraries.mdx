@@ -1,0 +1,418 @@
+---
+title: "State management libraries"
+description: "Learn when context is enough, when to reach for a state library, and how Redux Toolkit, Zustand, and Jotai compare for real React applications."
+level: "advanced"
+minutes: 12
+stage: "Stage 6 — Advanced"
+slug: "30-state-management-libraries"
+track: "react"
+---
+
+## Why this exists
+
+At first, local component state feels enough for almost everything. Then the app grows. Multiple screens need the same data. Async state becomes more complex. Debugging who changed what gets harder. One component starts passing data through three layers of props just so another component can read it. That is the moment developers start asking whether a state management library would help.
+
+This topic exists because “use Redux” is not a real answer anymore. Modern React teams have several good options, and each one fits a different kind of problem. Sometimes context is enough. Sometimes Zustand is the cleanest answer. Sometimes Redux Toolkit is the better choice because explicit actions, middleware, and DevTools matter more than minimal syntax. Sometimes Jotai is attractive because atomic state keeps updates very local.
+
+The real skill is not memorizing APIs. It is learning how to choose the right level of structure for the problem in front of you.
+
+## How it works
+
+Context is enough when the state is low-frequency, low-complexity, and shared by a manageable part of the tree. Theme mode, current locale, or a small authenticated user object are common examples. Context starts to feel less comfortable when shared state becomes very dynamic, needs async workflows, or must be updated from many places.
+
+A state library becomes attractive when you need some combination of these:
+
+- complex async state
+- clearer update flows
+- better debugging tools
+- middleware support
+- predictable scaling for a larger team
+
+Redux Toolkit is the modern Redux answer. It reduces old Redux boilerplate by giving you `createSlice`, `configureStore`, good defaults, and strong patterns for async state through thunks. Redux Toolkit shines when teams value explicit actions, centralized logic, middleware, predictable structure, and excellent DevTools.
+
+Zustand takes a different approach. It gives you a very small API, low boilerplate, and direct store updates. Many teams like it because it feels light and simple while still being powerful enough for plenty of production work.
+
+Jotai takes an atomic approach. Instead of one big store, you create small atoms and subscribe components only to the atoms they need. This can lead to very focused updates and a mental model that feels natural for some problems.
+
+Across all libraries, a few ideas keep showing up:
+
+- a store is where shared state lives
+- actions are the events or operations that update state
+- selectors read specific pieces of state
+- middleware adds extra behavior around updates, logging, persistence, or async work
+
+Async state needs special care because shared data is rarely only local and synchronous. Redux Toolkit often uses thunks for this. Zustand can place async functions directly inside the store. Jotai can model async state through derived atoms or helpers.
+
+DevTools also matter in real projects. Redux DevTools are one of Redux Toolkit’s strongest advantages because they show action history and state changes clearly. Zustand also has DevTools middleware support, which helps when you want a lighter store without giving up debugging visibility.
+
+Normalized state means storing shared entities once instead of duplicating the same user, product, or lesson object in many places. This becomes increasingly important as apps grow and multiple features depend on the same data.
+
+So when should you use which?
+
+- use context when the shared state is simple and changes infrequently
+- use Zustand when you want a fast, simple store with very low ceremony
+- use Redux Toolkit when the app is large, teams are bigger, async flows are rich, or strong conventions and tooling matter
+- use Jotai when atomic updates and fine-grained subscriptions match the problem well
+
+## Syntax
+
+```tsx
+const useCounterStore = create((set) => ({
+  count: 0,
+  increment: () => set((state) => ({ count: state.count + 1 })),
+}))
+```
+
+## Code examples
+
+### Example 1 — Zustand basic store
+
+This is the classic minimal Zustand example.
+
+```tsx
+import { create } from 'zustand'
+
+type CounterStore = {
+  count: number
+  increment: () => void
+  decrement: () => void
+}
+
+const useCounterStore = create<CounterStore>((set) => ({
+  count: 0,
+  increment: () => set((state) => ({ count: state.count + 1 })),
+  decrement: () => set((state) => ({ count: state.count - 1 })),
+}))
+
+function Counter() {
+  const count = useCounterStore((state) => state.count)
+  const increment = useCounterStore((state) => state.increment)
+
+  return <button onClick={increment}>Count: {count}</button>
+}
+```
+
+### Example 2 — Zustand async action
+
+Async work can live inside the store itself.
+
+```tsx
+import { create } from 'zustand'
+
+type LessonsStore = {
+  lessons: string[]
+  isLoading: boolean
+  fetchLessons: () => Promise<void>
+}
+
+const useLessonsStore = create<LessonsStore>((set) => ({
+  lessons: [],
+  isLoading: false,
+  fetchLessons: async () => {
+    set({ isLoading: true })
+
+    const response = await fetch('/api/lessons')
+    const data = (await response.json()) as string[]
+
+    set({
+      lessons: data,
+      isLoading: false,
+    })
+  },
+}))
+```
+
+### Example 3 — Zustand DevTools middleware
+
+Middleware adds debugging support without much extra code.
+
+```tsx
+import { create } from 'zustand'
+import { devtools } from 'zustand/middleware'
+
+type BearStore = {
+  bears: number
+  increase: () => void
+}
+
+const useBearStore = create<BearStore>()(
+  devtools((set) => ({
+    bears: 1,
+    increase: () =>
+      set((state) => ({ bears: state.bears + 1 }), false, 'bears/increase'),
+  })),
+)
+```
+
+### Example 4 — Redux Toolkit `createSlice`
+
+Slices group state and reducers together.
+
+```tsx
+import { createSlice } from '@reduxjs/toolkit'
+
+type CounterState = {
+  value: number
+}
+
+const initialState: CounterState = {
+  value: 0,
+}
+
+const counterSlice = createSlice({
+  name: 'counter',
+  initialState,
+  reducers: {
+    increment(state) {
+      state.value += 1
+    },
+    decrement(state) {
+      state.value -= 1
+    },
+  },
+})
+
+export const { increment, decrement } = counterSlice.actions
+export default counterSlice.reducer
+```
+
+### Example 5 — Redux Toolkit `configureStore`
+
+The store usually combines one or more slice reducers.
+
+```tsx
+import { configureStore } from '@reduxjs/toolkit'
+import counterReducer from './counterSlice'
+
+export const store = configureStore({
+  reducer: {
+    counter: counterReducer,
+  },
+})
+
+export type RootState = ReturnType<typeof store.getState>
+export type AppDispatch = typeof store.dispatch
+```
+
+### Example 6 — Redux Toolkit `useSelector` and `useDispatch`
+
+React components read and update store state through hooks.
+
+```tsx
+import { useDispatch, useSelector } from 'react-redux'
+import type { RootState, AppDispatch } from './store'
+import { increment } from './counterSlice'
+
+function Counter() {
+  const count = useSelector((state: RootState) => state.counter.value)
+  const dispatch = useDispatch<AppDispatch>()
+
+  return (
+    <button onClick={() => dispatch(increment())}>
+      Count: {count}
+    </button>
+  )
+}
+```
+
+### Example 7 — Redux Toolkit async thunk
+
+Thunks handle async flows in a structured way.
+
+```tsx
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+
+type Lesson = {
+  id: number
+  title: string
+}
+
+type LessonsState = {
+  items: Lesson[]
+  status: 'idle' | 'loading' | 'succeeded' | 'failed'
+}
+
+export const fetchLessons = createAsyncThunk('lessons/fetch', async () => {
+  const response = await fetch('/api/lessons')
+  return (await response.json()) as Lesson[]
+})
+
+const lessonsSlice = createSlice({
+  name: 'lessons',
+  initialState: {
+    items: [],
+    status: 'idle',
+  } as LessonsState,
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchLessons.pending, (state) => {
+        state.status = 'loading'
+      })
+      .addCase(fetchLessons.fulfilled, (state, action) => {
+        state.status = 'succeeded'
+        state.items = action.payload
+      })
+      .addCase(fetchLessons.rejected, (state) => {
+        state.status = 'failed'
+      })
+  },
+})
+```
+
+### Example 8 — Jotai `atom` and `useAtom`
+
+Jotai models state as composable atoms.
+
+```tsx
+import { atom, useAtom } from 'jotai'
+
+const countAtom = atom(0)
+
+function Counter() {
+  const [count, setCount] = useAtom(countAtom)
+
+  return (
+    <button onClick={() => setCount((currentCount) => currentCount + 1)}>
+      Count: {count}
+    </button>
+  )
+}
+```
+
+### Example 9 — Same feature in all three: counter with async fetch
+
+This comparison makes the tradeoffs easier to see.
+
+```tsx
+// Zustand
+const useCounterStore = create((set) => ({
+  count: 0,
+  syncFromServer: async () => {
+    const response = await fetch('/api/count')
+    const data = (await response.json()) as { value: number }
+    set({ count: data.value })
+  },
+}))
+```
+
+```tsx
+// Redux Toolkit
+const fetchCount = createAsyncThunk('counter/fetch', async () => {
+  const response = await fetch('/api/count')
+  return (await response.json()) as { value: number }
+})
+```
+
+```tsx
+// Jotai
+const countAtom = atom(0)
+const syncCountAtom = atom(null, async (_get, set) => {
+  const response = await fetch('/api/count')
+  const data = (await response.json()) as { value: number }
+  set(countAtom, data.value)
+})
+```
+
+The feature is the same, but each library expresses it with a different balance of explicitness, ceremony, and control.
+
+<LivePreview id="state-libraries" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Reaching for a library before local state or context actually breaks down.
+**Fix:** Start with the simplest tool that fits the problem.
+**Why:** More structure helps only when the problem is large enough to benefit from it.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Duplicating the same entity data in many parts of the store.
+**Fix:** Normalize shared entities when multiple features depend on them.
+**Why:** Duplication makes updates harder and creates inconsistent data bugs.
+</Callout>
+
+<Callout type="tip">
+Redux Toolkit is not “old Redux with more typing.” It is the modern, recommended Redux approach and removes much of the historical boilerplate people disliked.
+</Callout>
+
+<Callout type="note">
+A state library is not automatically better architecture. If the store becomes a dumping ground for every UI flag and temporary local value, complexity still grows.
+</Callout>
+
+## How this is used in real projects
+
+In real teams, the decision usually comes down to complexity and coordination. A small app may keep theme and auth in context and never need anything more. A medium-sized SaaS app might use Zustand for filters, overlays, and dashboard coordination because it is quick to adopt and easy to read. A large enterprise product with many developers, audit-heavy workflows, complex async state, and strong debugging needs may choose Redux Toolkit because the explicit patterns and DevTools pay off over time.
+
+Jotai often fits teams that like highly composable state and want to avoid one large centralized store. It can be especially appealing when different features need focused subscriptions and independent state atoms instead of a single global object.
+
+The best choice is rarely about trendiness. It is about matching the tool to the app’s actual shape.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** When would you use Redux over Zustand?
+**A:** I would lean toward Redux Toolkit when the application is large, the team is bigger, async workflows are complex, and strong conventions plus DevTools matter a lot. Redux gives more explicit update patterns, middleware support, and clearer action history. Zustand is often great for simpler or medium-complexity shared state where low boilerplate and direct ergonomics are more important.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a selector?
+**A:** A selector is a function that reads a specific slice or derived piece of state from a store. In Redux, selectors help components avoid knowing the full store structure directly and make state access easier to reuse. Selectors can also compute derived values efficiently.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is normalized state?
+**A:** Normalized state stores shared entities once, usually by ID, instead of duplicating the same full object in multiple places. This reduces inconsistency, makes updates easier, and helps large apps manage shared data more predictably.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a thunk?
+**A:** A thunk is a function that performs async or side-effect logic and can dispatch other actions before, during, or after that work. In Redux Toolkit, thunks are commonly used for data fetching, where you dispatch loading, success, and failure outcomes around the async request.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="When is React context often enough on its own?"
+  options={[
+    "For low-frequency, low-complexity shared state",
+    "Only for server rendering",
+    "Only for async API caching",
+    "Never, because a store is always better"
+  ]}
+  correct={0}
+  explanation="Context is often enough for simpler shared concerns like theme or locale, especially when updates are not extremely frequent or complex."
+/>
+
+<Quiz
+  question="Which modern Redux API is commonly used to define state plus reducers together?"
+  options={["createStore", "createSlice", "useMemo", "useContext"]}
+  correct={1}
+  explanation="`createSlice` is the modern Redux Toolkit API that groups initial state, reducers, and generated action creators together."
+/>
+
+<Quiz
+  question="What is one major reason teams choose Redux Toolkit for larger apps?"
+  options={[
+    "It avoids all async logic",
+    "It provides strong conventions, middleware, and DevTools",
+    "It removes the need for components",
+    "It only works with server components"
+  ]}
+  correct={1}
+  explanation="Redux Toolkit is often chosen for large apps because its structure, middleware support, and debugging tools make complex shared state easier to manage over time."
+/>
+
+<Quiz
+  question="What is the core idea behind Jotai?"
+  options={[
+    "One giant store object is always required",
+    "State is modeled with small composable atoms",
+    "Routing is built directly into the store",
+    "Only CSS state should be global"
+  ]}
+  correct={1}
+  explanation="Jotai uses atoms as small units of state, which can make subscriptions more focused and updates more local."
+/>
+
+<MarkDone slug="30-state-management-libraries" track="react" />

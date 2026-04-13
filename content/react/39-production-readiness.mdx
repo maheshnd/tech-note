@@ -1,0 +1,289 @@
+---
+title: "Production readiness"
+description: "Learn how to prepare a React app for production with safe environment config, error tracking, feature flags, analytics discipline, and performance budgets."
+level: "advanced"
+minutes: 12
+stage: "Stage 6 — Advanced"
+slug: "39-production-readiness"
+track: "react"
+---
+
+## Why this exists
+
+An app can be feature-complete and still not be ready to ship. Production readiness is the layer that sits between “it works on my machine” and “we can trust this in front of real users.”
+
+That layer includes things many developers postpone until the end:
+
+- environment configuration
+- error tracking
+- monitoring and logs
+- feature flags
+- analytics
+- performance budgets
+
+These concerns matter because real production systems fail in ways local development does not show. Secrets can leak. Errors can happen in browsers you never tested. A release can introduce a bad experiment to too many users at once. A bundle can grow slowly until the app becomes frustratingly slow without anyone noticing.
+
+This topic exists because advanced React development includes thinking beyond the component tree. Shipping well means making the app observable, configurable, and safe to evolve after launch.
+
+## How it works
+
+Environment configuration is one of the first production concerns. Apps usually need different values for local development, staging, and production. API base URLs, analytics keys, and feature flag providers may change across environments. Secrets should never be committed directly into the codebase, and public values should be clearly separated from private ones.
+
+Error tracking matters because many failures only appear under real usage conditions. Browser extensions, network instability, strange data, and device-specific issues all show up after launch. A production app should be able to report those failures through tools like Sentry or another monitoring system so the team can act on them quickly.
+
+Logs and monitoring complement error tracking. Errors show failures, but logs and health metrics help explain what the app and surrounding services were doing before and after the failure.
+
+Feature flags make releases safer. Instead of treating deployment as the same thing as release, teams can deploy code and then expose features gradually. This is useful for experiments, risky migrations, internal-only tools, and rollback safety.
+
+Analytics also need discipline. It is easy to scatter tracking calls everywhere and lose consistency. A better pattern is to centralize analytics events so naming, payload shape, and privacy decisions stay manageable.
+
+Performance budgets are another production habit. A team defines limits such as:
+
+- maximum page bundle size
+- maximum initial JavaScript cost
+- maximum image weight
+- target load performance thresholds
+
+Budgets help performance stay visible instead of turning into a slow decline nobody notices until users complain.
+
+Production readiness also means thinking about loading behavior. Sometimes the most important user experience win is not making everything instant, but making the shell appear quickly and loading secondary analytics or slower widgets after the core page is usable.
+
+The main mindset shift is this: production readiness is not a final polish step. It is part of architecture.
+
+## Syntax
+
+```ts
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+```
+
+## Code examples
+
+### Example 1 — Environment configuration
+
+Keep environment values outside the code and name them clearly.
+
+```txt
+.env.local
+NEXT_PUBLIC_API_BASE_URL=https://api.example.com
+SENTRY_AUTH_TOKEN=super-secret-token
+```
+
+```ts
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+
+if (!apiBaseUrl) {
+  throw new Error('Missing NEXT_PUBLIC_API_BASE_URL')
+}
+```
+
+### Example 2 — Safe environment separation
+
+Public and private values should not be mixed casually.
+
+```ts
+// Public: available to browser code
+process.env.NEXT_PUBLIC_ANALYTICS_KEY
+
+// Private: server-only
+process.env.INTERNAL_BILLING_SECRET
+```
+
+### Example 3 — Error tracking wrapper
+
+Centralize client error reporting instead of scattering one-off calls.
+
+```ts
+export function captureError(error: unknown, context?: Record<string, unknown>) {
+  console.error('Reporting error', error, context)
+  // Example: Sentry.captureException(error, { extra: context })
+}
+```
+
+### Example 4 — Error boundary plus reporting
+
+UI fallback and reporting often work together.
+
+```tsx
+import { ErrorBoundary } from 'react-error-boundary'
+
+function ErrorFallback() {
+  return <p>Something went wrong. Please try again.</p>
+}
+
+function App() {
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error) => captureError(error, { area: 'app-root' })}
+    >
+      <Dashboard />
+    </ErrorBoundary>
+  )
+}
+```
+
+### Example 5 — Feature flag usage
+
+Flags help separate deployment from release.
+
+```tsx
+type FeatureFlags = {
+  newBillingTable: boolean
+}
+
+function BillingPage({ flags }: { flags: FeatureFlags }) {
+  return flags.newBillingTable ? <NewBillingTable /> : <LegacyBillingTable />
+}
+```
+
+### Example 6 — Centralized analytics event helper
+
+Analytics becomes easier to manage when events are normalized.
+
+```ts
+type AnalyticsEvent =
+  | { name: 'signup_started'; source: string }
+  | { name: 'checkout_completed'; total: number }
+
+export function trackEvent(event: AnalyticsEvent) {
+  console.log('Tracking analytics event', event)
+}
+```
+
+### Example 7 — Performance budget idea
+
+Budgets turn “performance matters” into something measurable.
+
+```txt
+Performance budget
+- route JS under 200 KB
+- hero image under 150 KB
+- LCP under 2.5s on target devices
+```
+
+### Example 8 — Slow analytics, fast shell
+
+The shell should often appear before secondary work finishes.
+
+```tsx
+import { Suspense } from 'react'
+
+function DashboardPage() {
+  return (
+    <>
+      <DashboardShell />
+      <Suspense fallback={<p>Loading analytics...</p>}>
+        <AnalyticsPanel />
+      </Suspense>
+    </>
+  )
+}
+```
+
+### Example 9 — Launch checklist pattern
+
+A shared checklist makes release work repeatable.
+
+```txt
+Pre-launch checklist
+- env values verified
+- error tracking active
+- feature flags reviewed
+- analytics events validated
+- bundle size checked
+- monitoring dashboards ready
+```
+
+<LivePreview id="production-readiness" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Treating production readiness as cleanup work to do only at the very end.
+**Fix:** Build observability, configuration, and rollout safety into the app as it grows.
+**Why:** Retrofitting these concerns late is slower and riskier.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Hardcoding environment-specific values in source files.
+**Fix:** Use environment variables and validate required values.
+**Why:** This keeps deployments safer and environments easier to manage.
+</Callout>
+
+<Callout type="tip">
+Feature flags are valuable even for small teams. They let you separate “code is deployed” from “users can access it.”
+</Callout>
+
+<Callout type="note">
+Analytics without event naming discipline becomes noisy quickly. Treat analytics events like part of the app contract, not random console logs with network calls.
+</Callout>
+
+## How this is used in real projects
+
+In real teams, production readiness often shows up as a set of platform habits. Engineers add error reporting when building new flows, define event names with product teams, validate environment variables at startup, and watch performance budgets during PR review or CI.
+
+The most mature teams also make rollout safety normal. They use flags for risky features, watch monitoring dashboards after release, and keep enough observability in place that failures are visible quickly instead of being discovered only through user complaints.
+
+This is what separates “working software” from “operational software.”
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What makes a React app production-ready?
+**A:** A production-ready React app has more than working features. It needs safe environment configuration, error tracking, monitoring, analytics discipline, rollout safety through feature flags, and performance awareness so the app can be operated and improved reliably after launch.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why are feature flags useful?
+**A:** Feature flags let teams deploy code without exposing it to everyone immediately. That makes risky releases safer, supports staged rollouts, experiments, and internal previews, and gives teams a way to disable a feature quickly without a full redeploy.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a performance budget?
+**A:** A performance budget is a set of measurable limits for things like bundle size, image weight, or loading metrics. It helps teams treat performance as an explicit requirement instead of a vague goal.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why should analytics and error reporting be centralized?
+**A:** Centralization keeps naming, payload structure, and context consistent. It makes the system easier to maintain, improves data quality, and reduces the risk of random inconsistent instrumentation scattered across the codebase.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is one main benefit of feature flags?"
+  options={[
+    "They separate deployment from release",
+    "They remove the need for testing",
+    "They replace environment variables",
+    "They automatically shrink bundles"
+  ]}
+  correct={0}
+  explanation="Feature flags let teams deploy code first and then control when, where, and to whom the feature becomes visible."
+/>
+
+<Quiz
+  question="Why should private secrets stay out of client-side environment values?"
+  options={[
+    "Because browser code can expose them",
+    "Because React cannot read strings",
+    "Because TypeScript forbids it",
+    "Because analytics tools require it"
+  ]}
+  correct={0}
+  explanation="Client-side environment values are available to browser code, so secrets placed there can be exposed to users and attackers."
+/>
+
+<Quiz
+  question="What does a performance budget do?"
+  options={[
+    "Sets measurable limits for performance-related costs",
+    "Guarantees zero network latency",
+    "Removes the need for monitoring",
+    "Only affects CSS files"
+  ]}
+  correct={0}
+  explanation="A performance budget makes performance measurable by setting explicit limits for bundle size, image weight, or user-facing metrics."
+/>
+
+<MarkDone slug="39-production-readiness" track="react" />

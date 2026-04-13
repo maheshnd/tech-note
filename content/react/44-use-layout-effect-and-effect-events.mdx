@@ -1,0 +1,356 @@
+---
+title: "useLayoutEffect and useEffectEvent"
+description: "Learn when layout work must happen before paint, why useLayoutEffect should stay rare, and how useEffectEvent separates effect subscriptions from event-like logic."
+level: "advanced"
+minutes: 12
+stage: "Stage 7 — Modern React"
+slug: "44-use-layout-effect-and-effect-events"
+track: "react"
+---
+
+## Why this exists
+
+Most React side effects should use `useEffect`, not `useLayoutEffect`. But some UI problems are about timing, not just logic. If you need to measure the DOM and immediately update layout before the browser paints, normal `useEffect` can be too late. That is where `useLayoutEffect` exists.
+
+At the same time, teams often end up with effects that mix two different jobs: they subscribe to something, and they also run event-like logic that keeps changing identity on every render. That creates stale-closure bugs, dependency confusion, and repeated setup work. Modern React introduces `useEffectEvent` to separate those responsibilities more clearly.
+
+This topic exists because both APIs are about effect correctness, but in different ways. `useLayoutEffect` is about **when** code runs. `useEffectEvent` is about **what kind** of logic belongs inside an effect versus what should stay event-like and read the latest values safely.
+
+## How it works
+
+`useEffect` runs after React commits changes to the DOM and after the browser has a chance to paint. That is usually perfect because it avoids blocking rendering. But sometimes you need to read layout and immediately make a visual adjustment before the user sees the wrong position. Examples include tooltips, popovers, measured animations, and scroll restoration details. In those rare cases, `useLayoutEffect` runs after DOM updates but before the browser paints.
+
+That timing difference matters:
+
+- `useEffect`: after paint, better for most side effects
+- `useLayoutEffect`: before paint, useful for layout measurement and visual synchronization
+
+Because `useLayoutEffect` blocks paint, you should keep it rare and minimal. If you put expensive work there, the screen feels slower because the browser must wait before showing the updated UI.
+
+`useEffectEvent` solves a different class of problem. Sometimes an effect needs to subscribe only once or only when one specific dependency changes, but the callback used inside that subscription should still see the latest props and state. Without help, that often leads to one of two bad outcomes:
+
+- you omit dependencies and create stale values
+- you include too many dependencies and resubscribe more often than needed
+
+`useEffectEvent` lets you define event-like logic that always reads the latest values without making the surrounding effect reactive to all of those values. The subscription stays stable, while the event logic stays fresh.
+
+So the mental model is:
+
+- use `useLayoutEffect` when layout must be synchronized before paint
+- use `useEffect` for normal side effects after paint
+- use `useEffectEvent` when an effect needs fresh values for event-like logic without turning the subscription itself into a constantly recreated effect
+
+## Syntax
+
+```tsx
+useLayoutEffect(() => {
+  const rect = elementRef.current?.getBoundingClientRect()
+
+  if (!rect) {
+    return
+  }
+
+  setPosition({ top: rect.bottom, left: rect.left })
+}, [])
+```
+
+```tsx
+const onConnected = useEffectEvent(() => {
+  showToast(theme)
+})
+
+useEffect(() => {
+  connection.on('connected', onConnected)
+
+  return () => connection.disconnect()
+}, [roomId])
+```
+
+## Code examples
+
+### Example 1 — Measuring layout with `useLayoutEffect`
+
+A tooltip often needs to measure its anchor and place itself before the user sees the frame.
+
+```tsx
+import { useLayoutEffect, useRef, useState } from 'react'
+
+export default function TooltipDemo() {
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+
+  useLayoutEffect(() => {
+    const rect = buttonRef.current?.getBoundingClientRect()
+
+    if (!rect) {
+      return
+    }
+
+    setPosition({
+      top: rect.bottom + 8,
+      left: rect.left,
+    })
+  }, [])
+
+  return (
+    <div>
+      <button ref={buttonRef}>Open menu</button>
+      <div
+        style={{
+          position: 'absolute',
+          top: position.top,
+          left: position.left,
+        }}
+      >
+        Tooltip
+      </div>
+    </div>
+  )
+}
+```
+
+This works because the measurement and positioning happen before paint. The user does not see the tooltip in the wrong place first.
+
+### Example 2 — Tooltip positioning before paint
+
+A more realistic version recalculates position when the anchor size changes.
+
+```tsx
+import { useLayoutEffect, useRef, useState } from 'react'
+
+export default function ResizableTooltip() {
+  const anchorRef = useRef<HTMLDivElement | null>(null)
+  const [wide, setWide] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+
+  useLayoutEffect(() => {
+    const rect = anchorRef.current?.getBoundingClientRect()
+
+    if (!rect) {
+      return
+    }
+
+    setPosition({
+      top: rect.height + 12,
+      left: rect.width / 2 - 60,
+    })
+  }, [wide])
+
+  return (
+    <section>
+      <button type="button" onClick={() => setWide((value) => !value)}>
+        Toggle width
+      </button>
+
+      <div ref={anchorRef} style={{ width: wide ? 320 : 180 }}>
+        Anchor
+      </div>
+
+      <div style={{ position: 'absolute', top: position.top, left: position.left }}>
+        Positioned tooltip
+      </div>
+    </section>
+  )
+}
+```
+
+When the layout changes, the effect re-measures and keeps the visual alignment consistent before paint.
+
+### Example 3 — A bad `useLayoutEffect` that should be `useEffect`
+
+Not every side effect is a layout effect.
+
+```tsx
+import { useLayoutEffect } from 'react'
+
+export default function AnalyticsPing() {
+  useLayoutEffect(() => {
+    console.log('Track page view')
+  }, [])
+
+  return <p>Dashboard</p>
+}
+```
+
+This should use `useEffect`, not `useLayoutEffect`, because analytics does not need to block paint. Using `useLayoutEffect` here only delays rendering for no benefit.
+
+### Example 4 — A stale closure problem inside an effect
+
+Subscriptions often break when they capture old values.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export default function ChatRoom({
+  roomId,
+  theme,
+}: {
+  roomId: string
+  theme: 'light' | 'dark'
+}) {
+  const [connected, setConnected] = useState(false)
+
+  useEffect(() => {
+    const connection = createConnection(roomId)
+
+    connection.on('connected', () => {
+      setConnected(true)
+      showToast(`Connected with ${theme} theme`)
+    })
+
+    connection.connect()
+
+    return () => {
+      connection.disconnect()
+    }
+  }, [roomId, theme])
+
+  return <p>{connected ? 'Connected' : 'Connecting...'}</p>
+}
+```
+
+This keeps the toast theme fresh, but it also resubscribes every time `theme` changes, even though the actual room connection only depends on `roomId`.
+
+### Example 5 — The same subscription improved with `useEffectEvent`
+
+`useEffectEvent` lets the event logic stay fresh without making the whole subscription depend on `theme`.
+
+```tsx
+import { useEffect, useEffectEvent, useState } from 'react'
+
+export default function ChatRoom({
+  roomId,
+  theme,
+}: {
+  roomId: string
+  theme: 'light' | 'dark'
+}) {
+  const [connected, setConnected] = useState(false)
+
+  const onConnected = useEffectEvent(() => {
+    setConnected(true)
+    showToast(`Connected with ${theme} theme`)
+  })
+
+  useEffect(() => {
+    const connection = createConnection(roomId)
+
+    connection.on('connected', onConnected)
+    connection.connect()
+
+    return () => {
+      connection.disconnect()
+    }
+  }, [roomId])
+
+  return <p>{connected ? 'Connected' : 'Connecting...'}</p>
+}
+```
+
+Now the connection setup depends only on `roomId`, while the connected callback still reads the latest `theme`. That is the core benefit of `useEffectEvent`.
+
+<LivePreview id="layout-effect" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Using `useLayoutEffect` for every effect "just to be safe".
+**Fix:** Use `useEffect` by default and reserve `useLayoutEffect` for DOM measurement or visual synchronization that must happen before paint.
+**Why:** `useLayoutEffect` blocks paint, so overusing it makes the UI slower.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Doing heavy calculations inside `useLayoutEffect`.
+**Fix:** Keep layout effects short and focused on reading layout or synchronizing visual state.
+**Why:** The browser cannot paint until the layout effect finishes.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Mixing subscription setup and event-like logic in one effect without thinking about dependencies.
+**Fix:** Keep the subscription effect reactive only to what controls the subscription, and move event-like logic to `useEffectEvent` when you need fresh values.
+**Why:** This avoids unnecessary resubscriptions and stale closure bugs.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Omitting dependencies to "fix" an effect loop.
+**Fix:** Fix the effect design instead of hiding the dependency problem.
+**Why:** Missing dependencies often create stale logic that only appears broken later.
+</Callout>
+
+<Callout type="tip">
+If the user can visibly notice a flicker before the UI corrects itself, that is a clue the work may belong in `useLayoutEffect`.
+</Callout>
+
+<Callout type="note">
+`useEffectEvent` is part of newer modern React guidance. If your project is still on an older React version, you may need to learn the pattern first and adopt the API once the project upgrades.
+</Callout>
+
+## How this is used in real projects
+
+In production apps, `useLayoutEffect` usually appears in carefully chosen UI components, not everywhere. Common examples include positioning dropdown menus relative to a trigger, aligning a floating panel after measuring its size, restoring scroll position in a complex container, or coordinating animations that depend on measured layout. The best production use is narrow and intentional because blocking paint for broad app logic is rarely acceptable.
+
+`useEffectEvent` becomes valuable in subscription-heavy code. Real apps often connect to sockets, analytics channels, media players, observers, or embedded SDKs. The subscription may depend on a room ID, account ID, or DOM target, while the callback should still read the latest theme, permissions, feature flags, or selected filters. Without a pattern like `useEffectEvent`, teams often either resubscribe too often or leave stale values trapped inside closures.
+
+The deeper lesson in both cases is architectural: effects should be precise. Ask what the effect is synchronizing with, what truly controls that synchronization, and whether timing matters before paint or after paint. That thinking prevents a lot of effect-related bugs.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between `useEffect` and `useLayoutEffect`?
+**A:** `useEffect` runs after the DOM has been updated and after the browser has a chance to paint, so it is the right default for most side effects. `useLayoutEffect` runs after the DOM update but before paint, which makes it useful for layout measurement and visual synchronization. Because it blocks paint, it should be used sparingly. The key difference is not the syntax but the timing.
+</Callout>
+
+<Callout type="interview">
+**Q:** When should you use `useLayoutEffect`?
+**A:** You should use `useLayoutEffect` when the component must read layout and immediately make a visual adjustment before the user sees the frame. Examples include tooltip positioning, popover alignment, and some scroll or animation coordination cases. If the work does not affect what the user would visually see before paint, `useEffect` is usually better. A strong answer always mentions that `useLayoutEffect` blocks paint and should stay rare.
+</Callout>
+
+<Callout type="interview">
+**Q:** What problem does `useEffectEvent` solve?
+**A:** `useEffectEvent` helps when an effect needs to keep a stable subscription while still running event-like logic that should always see the latest props or state. Without it, developers often face a choice between stale closures and over-reactive dependency arrays that recreate the subscription too often. `useEffectEvent` separates those concerns more cleanly. The subscription stays reactive only to the values that control the subscription itself.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why is overusing `useLayoutEffect` a performance problem?
+**A:** `useLayoutEffect` runs before paint, so the browser has to wait for it to finish before showing the updated screen. If you put unnecessary or heavy work there, you increase the time before the UI becomes visible. That can make the app feel slower even if the logic is technically correct. Senior React work uses `useLayoutEffect` only where pre-paint synchronization is actually needed.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which hook is the better default for most side effects?"
+  options={[
+    "useLayoutEffect",
+    "useEffect",
+    "useMemo",
+    "useId"
+  ]}
+  correct={1}
+  explanation="`useEffect` is the default choice for most side effects because it does not block paint. `useLayoutEffect` should be reserved for layout-sensitive work."
+/>
+
+<Quiz
+  question="What is the main reason to use `useLayoutEffect`?"
+  options={[
+    "To fetch data faster",
+    "To avoid writing dependency arrays",
+    "To measure layout and synchronize visual state before paint",
+    "To replace all event handlers"
+  ]}
+  correct={2}
+  explanation="`useLayoutEffect` is useful when the UI must read layout and adjust something visually before the browser paints the frame."
+/>
+
+<Quiz
+  question="What is the key value of `useEffectEvent`?"
+  options={[
+    "It makes every effect run once",
+    "It lets event-like logic inside an effect see the latest values without forcing unnecessary resubscriptions",
+    "It replaces useState",
+    "It disables cleanup functions"
+  ]}
+  correct={1}
+  explanation="`useEffectEvent` helps separate the subscription itself from callback logic that should always read the latest props or state."
+/>
+
+<MarkDone slug="44-use-layout-effect-and-effect-events" track="react" />

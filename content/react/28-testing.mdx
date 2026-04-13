@@ -1,0 +1,422 @@
+---
+title: "Testing React apps"
+description: "Learn how to test React apps with behavior-first queries, user interactions, async assertions, MSW, hook tests, routing checks, and realistic form workflows."
+level: "intermediate"
+minutes: 14
+stage: "Stage 5 — Real World"
+slug: "28-testing"
+track: "react"
+---
+
+## Why this exists
+
+Testing matters because code changes never happen only once. A component that looks correct today can break tomorrow when we refactor state, move markup, add loading states, or wire in a new API. Without tests, every change becomes a confidence problem. We start clicking through the app manually, hoping nothing important broke. That does not scale.
+
+Good tests give us confidence to change code. That is the real reason they matter. They are not mainly about pleasing a CI pipeline. They are about making refactoring safer, catching regressions earlier, and helping teams move faster without breaking behavior users depend on.
+
+React apps especially benefit from behavior-focused tests because the UI changes constantly. Buttons trigger handlers, forms validate input, lists update after fetches, and routes show different screens. Testing lets us verify those flows from the user’s point of view instead of guessing that the implementation details are correct.
+
+## How it works
+
+React testing usually happens at three levels:
+
+- unit tests for one small piece of behavior
+- integration tests for several pieces working together
+- end-to-end tests for a full user flow running in a browser
+
+Unit tests are useful when the thing under test is small and isolated, such as a helper function or a component with one clear interaction. Integration tests are often the most valuable level in React because they test components the way users actually experience them: render the UI, click buttons, type into inputs, wait for async content, and assert what appears on screen. End-to-end tests go even wider and verify full flows like login, checkout, or dashboard navigation in a real browser.
+
+React Testing Library, often called RTL, is built around one important idea: test behavior, not implementation. That means we should avoid asserting private state, internal method calls, or fragile DOM structure if the user never sees those details. Instead, we test what the user can observe and do. Can they find the submit button? Can they type into the email field? Does an error message appear? Does a success message show after submit?
+
+That idea explains why query choice matters. The most common queries are:
+
+- `getByRole` for accessible elements such as buttons, headings, links, textboxes, and dialogs
+- `getByLabelText` for form fields connected to labels
+- `getByText` for visible text when a stronger semantic query is not a better fit
+- `findBy...` for async content that appears later
+- `queryBy...` when the element might not exist and you do not want the query itself to throw
+
+`getByRole` is usually preferred because it mirrors how assistive technologies understand the page. It also pushes us toward accessible markup. If a button cannot be found by role, that often reveals a real accessibility issue in the component.
+
+`userEvent` simulates real user behavior more closely than lower-level event utilities. Use it to click buttons, type into inputs, tab through fields, and submit forms. The closer our tests are to actual user interactions, the more trustworthy they become.
+
+Async behavior needs special handling because UI often updates after promises resolve. `findBy...` waits for an element to appear. `waitFor` keeps retrying an assertion until it passes or times out. These tools are important for fetches, delayed validation, loaders, and optimistic UI.
+
+Mocking network requests is another big part of frontend testing. MSW, short for Mock Service Worker, intercepts requests and returns fake responses. That is better than manually mocking `fetch` in many cases because it exercises your real request code while still keeping tests fast and predictable.
+
+Hooks can be tested directly with `renderHook`. That is useful when the hook contains behavior worth checking in isolation, such as toggling state, debouncing values, or managing async status.
+
+Test runners like Vitest and Jest run the tests, provide matchers, and manage the environment. The core testing ideas stay the same in both tools. Vitest feels especially natural in Vite-based projects, while Jest is still very common in older React codebases and many large teams.
+
+What should we test? Test user-visible behavior, critical branching logic, important accessibility states, async flows, error states, routing decisions, and business rules. What should we not over-test? Trivial implementation details, private helper names, exact state variable usage, or markup structure that users do not care about and that is likely to change during refactors.
+
+Testing forms usually means filling fields, submitting the form, and asserting either success or validation feedback. Testing routing means rendering route-aware components with a router wrapper and verifying the correct screen or navigation result. Testing accessibility often includes assertions such as `toBeVisible()` and `toHaveFocus()` so we know users can actually see and reach the important UI.
+
+## Syntax
+
+```tsx
+expect(screen.getByRole('button', { name: /save/i })).toBeVisible()
+```
+
+## Code examples
+
+### Example 1 — Basic render test
+
+This is the smallest useful test. It checks that the component renders and important content is present.
+
+```tsx
+import { render, screen } from '@testing-library/react'
+import Greeting from './Greeting'
+
+test('renders greeting heading', () => {
+  render(<Greeting />)
+
+  expect(
+    screen.getByRole('heading', { name: /welcome to react testing/i }),
+  ).toBeInTheDocument()
+})
+```
+
+### Example 2 — `getByRole`
+
+Find elements by role and accessible name whenever possible.
+
+```tsx
+import { render, screen } from '@testing-library/react'
+import SavePanel from './SavePanel'
+
+test('finds the save button by role', () => {
+  render(<SavePanel />)
+
+  const saveButton = screen.getByRole('button', { name: /save changes/i })
+
+  expect(saveButton).toBeVisible()
+})
+```
+
+This is better than searching for implementation-specific selectors because it reflects what the user and assistive technologies actually interact with.
+
+### Example 3 — `userEvent.click`
+
+Clicking should change visible behavior.
+
+```tsx
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import Counter from './Counter'
+
+test('increments the count when the button is clicked', async () => {
+  const user = userEvent.setup()
+
+  render(<Counter />)
+
+  await user.click(screen.getByRole('button', { name: /increment/i }))
+
+  expect(screen.getByText(/count: 1/i)).toBeInTheDocument()
+})
+```
+
+### Example 4 — `userEvent.type`
+
+Typing into a controlled input should update the visible field value.
+
+```tsx
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import SearchBox from './SearchBox'
+
+test('updates the input value as the user types', async () => {
+  const user = userEvent.setup()
+
+  render(<SearchBox />)
+
+  const input = screen.getByLabelText(/search lessons/i)
+
+  await user.type(input, 'react hooks')
+
+  expect(input).toHaveValue('react hooks')
+})
+```
+
+### Example 5 — Testing a form
+
+Forms should be tested the way users use them: fill, submit, assert.
+
+```tsx
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import ContactForm from './ContactForm'
+
+test('submits the form successfully when all fields are valid', async () => {
+  const user = userEvent.setup()
+
+  render(<ContactForm />)
+
+  await user.type(screen.getByLabelText(/full name/i), 'Mahesh Patel')
+  await user.type(screen.getByLabelText(/email/i), 'mahesh@example.com')
+  await user.type(screen.getByLabelText(/message/i), 'Please send the course notes.')
+
+  await user.click(screen.getByRole('button', { name: /send message/i }))
+
+  expect(
+    await screen.findByText(/message sent successfully/i),
+  ).toBeInTheDocument()
+})
+```
+
+### Example 6 — Async test with `waitFor` and `findBy`
+
+Use async helpers when content appears after a request finishes.
+
+```tsx
+import { render, screen, waitFor } from '@testing-library/react'
+import UserList from './UserList'
+
+test('shows fetched users after loading finishes', async () => {
+  render(<UserList />)
+
+  expect(screen.getByText(/loading users/i)).toBeInTheDocument()
+
+  const userRow = await screen.findByText(/ada lovelace/i)
+
+  expect(userRow).toBeVisible()
+
+  await waitFor(() => {
+    expect(screen.queryByText(/loading users/i)).not.toBeInTheDocument()
+  })
+})
+```
+
+### Example 7 — Mocking fetch with MSW
+
+MSW intercepts network requests and returns predictable responses without forcing us to rewrite the component.
+
+```tsx
+import { http, HttpResponse } from 'msw'
+import { setupServer } from 'msw/node'
+import { render, screen } from '@testing-library/react'
+import UserList from './UserList'
+
+const server = setupServer(
+  http.get('/api/users', () => {
+    return HttpResponse.json([
+      { id: 1, name: 'Ada Lovelace' },
+      { id: 2, name: 'Grace Hopper' },
+    ])
+  }),
+)
+
+beforeAll(() => server.listen())
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
+
+test('renders users from the mocked API', async () => {
+  render(<UserList />)
+
+  expect(await screen.findByText(/ada lovelace/i)).toBeInTheDocument()
+  expect(screen.getByText(/grace hopper/i)).toBeInTheDocument()
+})
+```
+
+### Example 8 — Testing a custom hook with `renderHook`
+
+Hooks can be tested directly when the logic itself is the thing we want confidence in.
+
+```tsx
+import { act, renderHook } from '@testing-library/react'
+import { useToggle } from './useToggle'
+
+test('toggles the value between true and false', () => {
+  const { result } = renderHook(() => useToggle(false))
+
+  expect(result.current.value).toBe(false)
+
+  act(() => {
+    result.current.toggle()
+  })
+
+  expect(result.current.value).toBe(true)
+})
+```
+
+### Example 9 — Testing error state
+
+Error paths are part of the product too. They should be tested on purpose.
+
+```tsx
+import { http, HttpResponse } from 'msw'
+import { render, screen } from '@testing-library/react'
+import { server } from './testServer'
+import UserList from './UserList'
+
+test('shows an error message when the request fails', async () => {
+  server.use(
+    http.get('/api/users', () => {
+      return new HttpResponse(null, { status: 500 })
+    }),
+  )
+
+  render(<UserList />)
+
+  expect(
+    await screen.findByText(/could not load users/i),
+  ).toBeInTheDocument()
+})
+```
+
+### Example 10 — Complete todo list test file
+
+This full file shows rendering, typing, submission, visibility, and accessible focus all in one realistic test suite.
+
+```tsx
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import TodoList from './TodoList'
+
+describe('TodoList', () => {
+  test('renders the default task', () => {
+    render(<TodoList />)
+
+    expect(screen.getByRole('heading', { name: /team tasks/i })).toBeVisible()
+    expect(screen.getByText(/write first test/i)).toBeInTheDocument()
+  })
+
+  test('adds a new task through the form', async () => {
+    const user = userEvent.setup()
+
+    render(<TodoList />)
+
+    const input = screen.getByLabelText(/task title/i)
+
+    await user.type(input, 'Review accessibility checks')
+    await user.click(screen.getByRole('button', { name: /add task/i }))
+
+    expect(
+      screen.getByText(/review accessibility checks/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/added "review accessibility checks" to the list/i),
+    ).toBeInTheDocument()
+    expect(input).toHaveValue('')
+    expect(input).toHaveFocus()
+  })
+
+  test('shows a validation message when the input is empty', async () => {
+    const user = userEvent.setup()
+
+    render(<TodoList />)
+
+    await user.click(screen.getByRole('button', { name: /add task/i }))
+
+    expect(
+      screen.getByText(/please enter a task title before saving/i),
+    ).toBeVisible()
+    expect(screen.getByLabelText(/task title/i)).toHaveFocus()
+  })
+})
+```
+
+<LivePreview id="testing-react" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Testing internal state or implementation details instead of visible behavior.
+**Fix:** Assert what the user can see and do.
+**Why:** Refactors should not break tests if the real behavior stays the same.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Reaching for `getByTestId` first.
+**Fix:** Prefer `getByRole`, `getByLabelText`, and other accessible queries.
+**Why:** Those queries better match real usage and help reveal accessibility issues.
+</Callout>
+
+<Callout type="tip">
+Integration tests are often the sweet spot in React apps. They give more confidence than tiny isolated assertions while still staying fast and focused.
+</Callout>
+
+<Callout type="note">
+Testing libraries do not make code quality magically improve. They work best when the UI is already accessible, components are reasonably focused, and side effects are isolated cleanly.
+</Callout>
+
+## How this is used in real projects
+
+In a real product, testing is part of how teams ship changes safely. A billing form might need tests that verify required fields, loading states, error messages, success banners, and route redirects after completion. A dashboard widget might need tests for loading, retry, empty state, and successful rendering. A settings page might need accessibility checks that confirm the save button is visible, the active input keeps focus after validation fails, and status messages are announced clearly.
+
+Most strong React teams combine several layers:
+
+- fast unit tests for utility logic
+- integration tests for user-visible component flows
+- a smaller number of end-to-end tests for critical product journeys
+
+That balance keeps confidence high without turning the test suite into a slow, brittle maintenance problem.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between unit, integration, and E2E tests?
+**A:** Unit tests focus on one small piece of behavior in isolation, such as a helper function or a small component interaction. Integration tests verify that multiple pieces work together correctly, such as a form that validates input, submits data, and shows success feedback. End-to-end tests run the application in a browser and verify complete user flows like login, checkout, or navigation across multiple pages. In React apps, integration tests are often especially valuable because they match how users experience the UI.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why does React Testing Library recommend testing behavior not implementation?
+**A:** Because users do not care about private state variables, internal method names, or the exact nesting of DOM elements. They care about whether they can click a button, submit a form, see validation feedback, and reach the correct screen. Behavior-focused tests are more stable during refactors and better represent the true contract of the component.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is MSW and why do you use it for testing?
+**A:** MSW stands for Mock Service Worker. It intercepts network requests and returns fake responses during tests. This lets us exercise the real fetch or client request flow without depending on a live backend. It makes async tests more realistic, less brittle, and easier to reuse across many test cases.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why is `getByRole` preferred over `getByTestId`?
+**A:** `getByRole` matches how accessible technologies identify UI elements, so it better reflects real user interaction and encourages semantic HTML. It also tends to be more resilient because roles and accessible names are part of the actual UI contract. `getByTestId` is still useful occasionally, but it should usually be a fallback rather than the first choice.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which query is usually preferred because it reflects accessible UI semantics?"
+  options={["getByTestId", "getByRole", "querySelector", "container.firstChild"]}
+  correct={1}
+  explanation="`getByRole` is preferred because it matches how users and assistive technologies interact with the interface, and it encourages accessible markup."
+/>
+
+<Quiz
+  question="When should you usually use `findBy...` queries?"
+  options={[
+    "When the element should appear asynchronously",
+    "When you want to inspect internal component state",
+    "When the element definitely does not exist",
+    "Only for snapshot tests"
+  ]}
+  correct={0}
+  explanation="`findBy...` queries wait for async UI updates, which makes them useful for fetches, delayed renders, and success messages that appear later."
+/>
+
+<Quiz
+  question="What is the main benefit of MSW in frontend testing?"
+  options={[
+    "It rewrites your components to avoid fetch calls",
+    "It intercepts network requests and returns fake responses",
+    "It makes CSS load faster in tests",
+    "It replaces React Testing Library completely"
+  ]}
+  correct={1}
+  explanation="MSW intercepts network requests and gives controlled responses, so tests can cover realistic async flows without depending on a real backend."
+/>
+
+<Quiz
+  question="Which statement best describes behavior-first React tests?"
+  options={[
+    "They assert private state values after every event",
+    "They verify what the user can see and do",
+    "They focus mainly on component file structure",
+    "They only work for end-to-end tests"
+  ]}
+  correct={1}
+  explanation="Behavior-first tests concentrate on visible results and user interactions, which makes them more stable and more representative of real product behavior."
+/>
+
+<MarkDone slug="28-testing" track="react" />

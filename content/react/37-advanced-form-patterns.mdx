@@ -1,0 +1,389 @@
+---
+title: "Advanced form & UI patterns"
+description: "Learn how to build production-grade form systems with multi-step flows, autosave, undo and redo, schema-driven rendering, and reusable UI patterns."
+level: "advanced"
+minutes: 12
+stage: "Stage 6 — Advanced"
+slug: "37-advanced-form-patterns"
+track: "react"
+---
+
+## Why this exists
+
+Basic forms are only the beginning. Real products often need onboarding wizards, draft saving, validation across multiple steps, conditional sections, undo and redo, repeatable fields, and reusable UI systems that make all of this manageable instead of fragile.
+
+This topic exists because advanced form work is not just about more inputs. It is about architecture. A form stops being “a few fields on a page” and becomes a state machine with validation, persistence, branching, and a user experience that must stay clear even when the data shape grows.
+
+The same is true for the UI patterns around those forms. Good teams do not rebuild every wizard, autosave indicator, or field layout from scratch. They create reusable patterns that make complex workflows feel consistent.
+
+## How it works
+
+Multi-step wizards break a large form into smaller sections. This improves focus and reduces overwhelm, but it introduces new problems:
+
+- how to preserve state between steps
+- how to validate only the current step or the full draft
+- how to handle back and next navigation
+- how to show completion progress clearly
+
+Autosave is another common pattern. Instead of waiting for one final submit, the app saves drafts in the background as the user works. This is especially helpful for long forms, admin tools, and anything users may abandon halfway through. Autosave needs clear feedback so users know whether their latest changes are safe.
+
+Undo and redo patterns become valuable when forms involve destructive changes or complex editing. Instead of treating every edit as final, the UI can preserve previous snapshots so the user can step backward confidently.
+
+Schema-driven forms use a configuration object or validation schema to define the fields, constraints, and rendering rules. This can make large form systems more consistent because field metadata lives in one structure rather than being scattered across many components.
+
+Reusable UI patterns sit around those behaviors. Examples include:
+
+- form shells that give sections a consistent layout
+- field wrappers that handle labels, help text, and errors
+- wizard progress bars
+- autosave status indicators
+- repeatable section controls
+
+The main architectural idea is to separate these concerns cleanly:
+
+- field rendering
+- validation rules
+- step flow
+- persistence and autosave
+- user feedback and status UI
+
+When those layers are mixed carelessly, form code becomes one giant component. When they are separated intentionally, even large workflows stay maintainable.
+
+## Syntax
+
+```tsx
+const [step, setStep] = useState(1)
+```
+
+## Code examples
+
+### Example 1 — Multi-step wizard state
+
+The current step and one shared draft object usually sit at the top.
+
+```tsx
+import { useState } from 'react'
+
+type SignupDraft = {
+  name: string
+  email: string
+  plan: string
+}
+
+function SignupWizard() {
+  const [step, setStep] = useState(1)
+  const [draft, setDraft] = useState<SignupDraft>({
+    name: '',
+    email: '',
+    plan: 'starter',
+  })
+
+  return (
+    <div>
+      <p>Current step: {step}</p>
+      <button onClick={() => setStep((currentStep) => currentStep + 1)}>
+        Next
+      </button>
+    </div>
+  )
+}
+```
+
+### Example 2 — Step-based validation
+
+Only validate the fields that belong to the current step before moving on.
+
+```tsx
+function validateStep(step: number, draft: SignupDraft): string[] {
+  if (step === 1 && !draft.name.trim()) {
+    return ['Name is required']
+  }
+
+  if (step === 2 && !draft.email.includes('@')) {
+    return ['Enter a valid email']
+  }
+
+  return []
+}
+```
+
+### Example 3 — Autosave with debounce
+
+Autosave usually waits briefly so it does not fire on every keystroke.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function DraftAutosave({ draft }: { draft: SignupDraft }) {
+  const [status, setStatus] = useState('Idle')
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(async () => {
+      setStatus('Saving...')
+
+      await fetch('/api/drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft),
+      })
+
+      setStatus('Saved')
+    }, 500)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [draft])
+
+  return <p>{status}</p>
+}
+```
+
+### Example 4 — Undo and redo snapshots
+
+This pattern stores history so changes can be reversed.
+
+```tsx
+import { useState } from 'react'
+
+function useDraftHistory<T>(initialValue: T) {
+  const [current, setCurrent] = useState(initialValue)
+  const [past, setPast] = useState<T[]>([])
+  const [future, setFuture] = useState<T[]>([])
+
+  function update(nextValue: T) {
+    setPast((currentPast) => [...currentPast, current])
+    setCurrent(nextValue)
+    setFuture([])
+  }
+
+  function undo() {
+    const previous = past.at(-1)
+    if (!previous) return
+
+    setPast((currentPast) => currentPast.slice(0, -1))
+    setFuture((currentFuture) => [current, ...currentFuture])
+    setCurrent(previous)
+  }
+
+  return { current, update, undo }
+}
+```
+
+### Example 5 — Schema-driven fields
+
+Field definitions can come from configuration.
+
+```tsx
+type FieldConfig = {
+  name: string
+  label: string
+  type: 'text' | 'email' | 'select'
+}
+
+const fields: FieldConfig[] = [
+  { name: 'name', label: 'Full name', type: 'text' },
+  { name: 'email', label: 'Email', type: 'email' },
+]
+```
+
+### Example 6 — Rendering fields from schema
+
+Once the schema exists, rendering can be more reusable.
+
+```tsx
+function DynamicFields({
+  fields,
+  values,
+  onChange,
+}: {
+  fields: FieldConfig[]
+  values: Record<string, string>
+  onChange: (name: string, value: string) => void
+}) {
+  return (
+    <div>
+      {fields.map((field) => (
+        <label key={field.name}>
+          {field.label}
+          <input
+            type={field.type}
+            value={values[field.name] ?? ''}
+            onChange={(event) => onChange(field.name, event.target.value)}
+          />
+        </label>
+      ))}
+    </div>
+  )
+}
+```
+
+### Example 7 — Reusable field wrapper
+
+Common structure should not be repeated in every form file.
+
+```tsx
+function FieldWrapper({
+  label,
+  error,
+  children,
+}: React.PropsWithChildren<{ label: string; error?: string }>) {
+  return (
+    <label>
+      <span>{label}</span>
+      <div>{children}</div>
+      {error ? <p>{error}</p> : null}
+    </label>
+  )
+}
+```
+
+### Example 8 — Repeatable sections
+
+Many advanced forms need arrays of structured items.
+
+```tsx
+type Contact = {
+  id: string
+  name: string
+}
+
+function ContactsForm() {
+  const [contacts, setContacts] = useState<Contact[]>([])
+
+  function addContact() {
+    setContacts((currentContacts) => [
+      ...currentContacts,
+      { id: crypto.randomUUID(), name: '' },
+    ])
+  }
+
+  return (
+    <div>
+      <button onClick={addContact}>Add contact</button>
+      {contacts.map((contact) => (
+        <input key={contact.id} value={contact.name} />
+      ))}
+    </div>
+  )
+}
+```
+
+### Example 9 — Full wizard shell pattern
+
+A reusable shell keeps different multi-step flows consistent.
+
+```tsx
+function WizardShell({
+  title,
+  step,
+  totalSteps,
+  children,
+}: React.PropsWithChildren<{
+  title: string
+  step: number
+  totalSteps: number
+}>) {
+  return (
+    <section>
+      <h1>{title}</h1>
+      <p>
+        Step {step} of {totalSteps}
+      </p>
+      <div>{children}</div>
+    </section>
+  )
+}
+```
+
+<LivePreview id="advanced-forms" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Putting all wizard logic, validation, autosave, and UI into one huge component.
+**Fix:** Separate step flow, validation, field rendering, and persistence concerns.
+**Why:** Large forms become much easier to reason about when each layer has one clear job.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Autosaving without clear user feedback.
+**Fix:** Show saving, saved, and error states.
+**Why:** Users need to know whether their work is actually safe.
+</Callout>
+
+<Callout type="tip">
+Schema-driven forms do not mean every form must be fully generated. The real benefit is consistency, not removing all custom UI.
+</Callout>
+
+<Callout type="note">
+Undo and redo are not only for rich text editors. They are helpful anywhere the cost of a mistaken edit is high.
+</Callout>
+
+## How this is used in real projects
+
+In real products, advanced forms often appear in onboarding flows, admin tools, internal CRMs, policy configuration screens, profile completion flows, and long content-management workflows. These forms usually share the same pain points: users do not finish them in one sitting, mistakes are costly, validation is layered, and the UI must stay clear over many steps.
+
+That is why mature teams build reusable patterns rather than isolated one-off forms. A strong form system saves time not only for engineers, but also for designers and product teams who want consistent behavior across the app.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** How would you structure a multi-step form in React?
+**A:** I would usually keep one draft object and the current step in a parent component, validate step by step, and render the current section through reusable field wrappers or step components. I would also separate persistence logic such as autosave from the field rendering layer so the form stays maintainable.
+</Callout>
+
+<Callout type="interview">
+**Q:** When is autosave a good idea?
+**A:** Autosave is a good idea for long forms, admin workflows, drafts, and any flow where users may leave before final submission. It reduces the risk of lost work, but it should include clear status feedback and sensible debouncing.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a schema-driven form?
+**A:** A schema-driven form uses a configuration or validation schema to describe fields, types, and rules in a structured way. That schema can then help render fields, validate values, and keep large form systems more consistent.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why would you add undo and redo to a form workflow?
+**A:** Undo and redo help users recover from mistakes, which is especially valuable in complex or high-stakes editing flows. They make the UI feel safer and reduce frustration when a user changes something unintentionally.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is one major benefit of splitting a long form into a wizard?"
+  options={[
+    "It reduces overwhelm by showing one section at a time",
+    "It removes the need for validation",
+    "It guarantees no backend code is needed",
+    "It prevents all user mistakes"
+  ]}
+  correct={0}
+  explanation="A wizard can make a large workflow easier to complete because users focus on one section at a time instead of facing the full complexity all at once."
+/>
+
+<Quiz
+  question="Why is autosave usually debounced?"
+  options={[
+    "To avoid firing a network request on every keystroke",
+    "To hide all validation errors",
+    "To replace final submission completely",
+    "To prevent all rerenders"
+  ]}
+  correct={0}
+  explanation="Debouncing autosave prevents excessive requests and makes the saving behavior more efficient while the user is still actively typing."
+/>
+
+<Quiz
+  question="What does schema-driven form design mainly improve?"
+  options={[
+    "Consistency and reuse across large forms",
+    "Only CSS performance",
+    "The need for React state",
+    "Browser security headers"
+  ]}
+  correct={0}
+  explanation="Schema-driven design helps centralize field definitions and validation rules, which makes complex form systems more consistent and reusable."
+/>
+
+<MarkDone slug="37-advanced-form-patterns" track="react" />

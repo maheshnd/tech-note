@@ -1,0 +1,473 @@
+---
+title: "State management fundamentals"
+description: "Learn the main types of state in React, where state should live, why derived state is better than duplicated state, and how to keep one source of truth."
+level: "intermediate"
+minutes: 10
+stage: "Stage 4 — Intermediate"
+slug: "15-state-management-fundamentals"
+track: "react"
+---
+
+## Why this exists
+
+As soon as a React app grows beyond a few simple components, one question starts showing up everywhere: where should this state live? If you put state in the wrong place, components become tightly coupled, values get duplicated, and the UI falls out of sync. If you store too much, your app becomes harder to reason about. If you store too little, components cannot coordinate correctly.
+
+State management fundamentals exist to solve that problem. Before learning libraries or advanced patterns, you need a clear model for the kinds of state that appear in real applications and how to decide where each one belongs. Most React state problems are not caused by missing tools. They are caused by unclear ownership and duplicated data.
+
+This topic matters because React works best when each piece of state has one owner and one clear purpose. If you understand local state, shared state, global state, server state, derived state, UI state, form state, and URL state, you can make better design decisions long before reaching for bigger tools.
+
+## How it works
+
+State is data that can change over time and affects what the UI should show. In React, state is usually stored with hooks like `useState` or `useReducer`, but the bigger question is not only how to store it. The bigger question is what kind of state it is and who should own it.
+
+Here are the main categories of state you should know:
+
+- Local state: state used by one component only, such as whether a dropdown is open or the value of a small counter.
+- Shared state: state used by multiple related components, often lifted to a parent and passed down through props.
+- Global state: state needed across many unrelated parts of the app, such as a logged-in user, theme, or selected workspace.
+- Server state: data that comes from an API and has its own lifecycle, such as loading, error, refetching, caching, and stale data.
+- Derived state: values computed from other state, such as a filtered list, a cart total, or a completed task count.
+- UI state: temporary interface state like modal open/closed, selected tab, hover state, or drawer visibility.
+- Form state: input values, validation errors, touched fields, and submitting status.
+- URL state: state represented in the URL, such as filters, current page, sort order, or selected item.
+
+One of the most important React rules is single source of truth. If the same meaning is stored in two places, those two places can drift apart. For example, storing both `todos` and `completedTodos` in state often creates bugs because they can become inconsistent. It is usually better to store `todos` once and compute `completedTodos` from it.
+
+This leads directly to derived state. Derived state is any value you can calculate from existing state or props. If a value can be computed when rendering, you often should not store it separately. This keeps the state model smaller and reduces synchronization bugs.
+
+Immutability is another core part of state management. React expects you to replace arrays and objects with new versions instead of mutating existing ones. That is why updates use patterns like spread, `map`, and `filter` instead of `push`, direct assignment, or in-place mutation. Immutable updates help React detect changes correctly and keep your mental model predictable.
+
+When deciding where state should live, start as low as possible:
+
+- If only one component needs it, keep it local.
+- If siblings need it, lift it to their closest common ancestor.
+- If many unrelated branches need it, consider context or another shared solution.
+- If the value comes from the server, treat it as server state with loading and error concerns.
+- If the value can be computed from other state, derive it instead of storing it.
+
+This is why local state is enough most of the time. Many beginners reach for global state too early. In reality, most state belongs close to the component that uses it. Global state should have a higher bar because it increases coupling across the app.
+
+## Syntax
+
+```tsx
+const [count, setCount] = useState(0)
+
+const doubled = count * 2
+```
+
+Here, `count` is stored state. `doubled` is derived state because it is computed from `count`.
+
+## Code examples
+
+### Example 1 — Local state
+
+If only one component cares about a value, local state is usually the right choice.
+
+```tsx
+import { useState } from 'react'
+
+export default function LocalCounter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <button onClick={() => setCount((value) => value + 1)}>
+      Count: {count}
+    </button>
+  )
+}
+```
+
+This count is local because no other component needs it.
+
+### Example 2 — Shared state lifted to a parent
+
+Once two children need the same value, the state should usually move up.
+
+```tsx
+import { useState } from 'react'
+
+function SearchInput({
+  query,
+  onQueryChange,
+}: {
+  query: string
+  onQueryChange: (value: string) => void
+}) {
+  return (
+    <input
+      value={query}
+      onChange={(event) => onQueryChange(event.target.value)}
+    />
+  )
+}
+
+function SearchSummary({ query }: { query: string }) {
+  return <p>Searching for: {query || 'nothing yet'}</p>
+}
+
+export default function SharedStateExample() {
+  const [query, setQuery] = useState('')
+
+  return (
+    <section>
+      <SearchInput query={query} onQueryChange={setQuery} />
+      <SearchSummary query={query} />
+    </section>
+  )
+}
+```
+
+This is shared state because both children depend on the same source of truth.
+
+### Example 3 — Derived state: filtering a list
+
+Do not store filtered results separately if you can compute them.
+
+```tsx
+import { useMemo, useState } from 'react'
+
+const lessons = ['React', 'Next.js', 'JavaScript']
+
+export default function FilteredList() {
+  const [query, setQuery] = useState('')
+
+  const filteredLessons = useMemo(() => {
+    return lessons.filter((lesson) =>
+      lesson.toLowerCase().includes(query.toLowerCase()),
+    )
+  }, [query])
+
+  return (
+    <section>
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <ul>
+        {filteredLessons.map((lesson) => (
+          <li key={lesson}>{lesson}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+`filteredLessons` is derived from `query` and the original list.
+
+### Example 4 — Derived state: computed cart total
+
+Totals are another classic example of something you should derive.
+
+```tsx
+const cartItems = [
+  { id: 1, name: 'Keyboard', price: 100, quantity: 1 },
+  { id: 2, name: 'Mouse', price: 40, quantity: 2 },
+]
+
+export default function CartSummary() {
+  const total = cartItems.reduce((sum, item) => {
+    return sum + item.price * item.quantity
+  }, 0)
+
+  return <p>Total: ${total}</p>
+}
+```
+
+The total is computed from the cart items instead of being stored separately.
+
+### Example 5 — UI state: modal open/closed
+
+UI state controls interface behavior, not business data.
+
+```tsx
+import { useState } from 'react'
+
+export default function ModalExample() {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <section>
+      <button onClick={() => setIsOpen(true)}>Open modal</button>
+      {isOpen ? (
+        <div>
+          <p>Modal content</p>
+          <button onClick={() => setIsOpen(false)}>Close</button>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+```
+
+This is UI state because it controls what part of the interface is visible.
+
+### Example 6 — Form state: all fields in one object
+
+Form state often includes more than one value.
+
+```tsx
+import { useState } from 'react'
+
+type FormState = {
+  name: string
+  email: string
+  touched: boolean
+}
+
+export default function ContactForm() {
+  const [form, setForm] = useState<FormState>({
+    name: '',
+    email: '',
+    touched: false,
+  })
+
+  return (
+    <form>
+      <input
+        value={form.name}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, name: event.target.value }))
+        }
+      />
+      <input
+        value={form.email}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, email: event.target.value }))
+        }
+      />
+    </form>
+  )
+}
+```
+
+The form data belongs together, so one object can be a good fit.
+
+### Example 7 — URL state from a query parameter
+
+Some state belongs in the URL so it can be shared, bookmarked, and restored.
+
+```tsx
+function ProductPage() {
+  const searchParams = new URLSearchParams(window.location.search)
+  const category = searchParams.get('category') ?? 'all'
+
+  return <p>Current category: {category}</p>
+}
+```
+
+Filters, pagination, and selected views often make sense as URL state.
+
+### Example 8 — Single source of truth: wrong vs right
+
+Duplicated state causes bugs because values fall out of sync.
+
+```tsx
+import { useState } from 'react'
+
+export function WrongExample() {
+  const [firstName, setFirstName] = useState('Mahesh')
+  const [fullName, setFullName] = useState('Mahesh Kumar')
+
+  return (
+    <section>
+      <button onClick={() => setFirstName('Asha')}>Change first name</button>
+      <p>First name: {firstName}</p>
+      <p>Full name: {fullName}</p>
+    </section>
+  )
+}
+```
+
+The full name can become wrong because it is stored separately.
+
+```tsx
+import { useState } from 'react'
+
+export function RightExample() {
+  const [firstName, setFirstName] = useState('Mahesh')
+  const [lastName, setLastName] = useState('Kumar')
+
+  const fullName = `${firstName} ${lastName}`
+
+  return (
+    <section>
+      <button onClick={() => setFirstName('Asha')}>Change first name</button>
+      <p>Full name: {fullName}</p>
+    </section>
+  )
+}
+```
+
+Here `fullName` is derived, so there is only one source of truth for the names.
+
+### Example 9 — Immutable update: wrong vs right
+
+Never mutate state directly.
+
+```tsx
+import { useState } from 'react'
+
+export function WrongMutation() {
+  const [items, setItems] = useState(['React'])
+
+  function addItem() {
+    items.push('Next.js')
+    setItems(items)
+  }
+
+  return <button onClick={addItem}>Add item</button>
+}
+```
+
+This mutates the existing array, which is a bad React state update pattern.
+
+```tsx
+import { useState } from 'react'
+
+export function RightMutation() {
+  const [items, setItems] = useState(['React'])
+
+  function addItem() {
+    setItems((current) => [...current, 'Next.js'])
+  }
+
+  return <button onClick={addItem}>Add item</button>
+}
+```
+
+This creates a new array instead of mutating the old one.
+
+### Example 10 — How to decide: local, shared, or global
+
+A simple decision process helps:
+
+```tsx
+const examples = [
+  'A dropdown open state inside one component -> local state',
+  'A selected tab shared by sibling panels -> shared state',
+  'The authenticated user needed across the app -> global state',
+  'A filtered list computed from existing items -> derived state',
+]
+
+export default function StateDecisionGuide() {
+  return (
+    <ul>
+      {examples.map((example) => (
+        <li key={example}>{example}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Ask these questions:
+
+- Who needs to read this state?
+- Who needs to change it?
+- Can it be computed instead of stored?
+- Does it belong in the URL?
+- Does it come from the server?
+
+<LivePreview id="state-management" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Storing values that can be derived from other state.
+**Fix:** Compute them during render or with a memoized calculation when needed.
+**Why:** Derived values are easier to keep correct because there is only one real source of truth.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Duplicating the same meaning in multiple pieces of state.
+**Fix:** Keep one source of truth and derive everything else.
+**Why:** Duplicated state is one of the most common sources of React bugs.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Reaching for global state too early.
+**Fix:** Start with local state and lift only when a real sharing need appears.
+**Why:** Most state belongs close to the UI that uses it.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Mutating arrays or objects in state directly.
+**Fix:** Replace them immutably with spread, `map`, or `filter`.
+**Why:** React relies on new references to detect updates predictably.
+</Callout>
+
+<Callout type="tip">
+Default to local state. Only lift when you need to.
+</Callout>
+
+<Callout type="tip">
+If you can compute it, do not store it.
+</Callout>
+
+<Callout type="warning">
+Duplicating state is the most common source of bugs in React apps.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are the different types of state in a React application?
+**A:** Common categories include local state, shared state, global state, server state, derived state, UI state, form state, and URL state. The important skill is not just naming them, but understanding how each category affects ownership and where the state should live.
+</Callout>
+
+## How this is used in real projects
+
+State management decisions shape the architecture of real apps. A modal open flag is usually local UI state. A filter shared by a search box and a results table is shared state. The logged-in user or active workspace might be global state. API data has loading, error, caching, and refetch behavior, so it should be treated as server state rather than ordinary local state.
+
+This topic also affects performance and maintainability. If state lives too high, large parts of the app re-render unnecessarily. If state is duplicated, bugs appear when values drift apart. If derived values are stored instead of computed, you spend time keeping multiple pieces of state synchronized instead of letting React calculate them naturally.
+
+Strong React codebases are not usually the ones with the most state tools. They are the ones where state ownership is clear, derived values stay derived, and each state category is handled in the right place.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What are the different types of state in a React application?
+**A:** The main types are local state, shared state, global state, server state, derived state, UI state, form state, and URL state. Local state belongs to one component. Shared state is lifted for related components. Global state is needed across distant parts of the app. Server state comes from APIs. Derived state is computed from other values. UI state controls interface behavior. Form state tracks inputs and validation. URL state lives in the address bar.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the single source of truth principle?
+**A:** Single source of truth means a piece of data should have one clear owner. Instead of storing the same meaning in multiple places, keep the original state in one place and derive related values from it. This prevents synchronization bugs and makes the UI easier to reason about.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is derived state and why should you prefer it?
+**A:** Derived state is a value computed from other state or props instead of being stored separately. You should prefer it because it reduces duplication, avoids synchronization bugs, and keeps the real state model smaller and simpler.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you decide where state should live?
+**A:** Start by asking who needs to read the state and who needs to change it. If only one component needs it, keep it local. If related components need it, lift it to their closest common ancestor. If many distant parts of the app need it, shared context or another global solution may be appropriate. If the value comes from the server, treat it as server state. If it can be computed, derive it instead of storing it.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is derived state?"
+  options={[
+    "State that is computed from other state rather than stored separately",
+    "State saved in localStorage",
+    "State shared through context only",
+    "State that never changes"
+  ]}
+  correct={0}
+  explanation="Derived state is calculated from existing state or props, such as a filtered list or cart total. It usually should not be stored separately."
+/>
+
+<Quiz
+  question="What type of state is an open/closed modal?"
+  options={[
+    "Server state",
+    "UI state",
+    "Derived state",
+    "URL state"
+  ]}
+  correct={1}
+  explanation="A modal open or closed flag is UI state because it controls interface visibility and interaction rather than representing domain data from an API."
+/>
+
+<MarkDone slug="15-state-management-fundamentals" track="react" />

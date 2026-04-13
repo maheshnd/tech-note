@@ -1,0 +1,792 @@
+---
+title: "Custom hooks"
+description: "Learn how to extract reusable stateful logic into custom hooks, when to create them, and how to build practical hooks for fetching, forms, browser APIs, and UI behavior."
+level: "intermediate"
+minutes: 12
+stage: "Stage 4 — Intermediate"
+slug: "18-custom-hooks"
+track: "react"
+---
+
+## Why this exists
+
+As React apps grow, you start seeing the same logic appear again and again. One component fetches data and handles loading and error states. Another does almost the same thing. One component reads from localStorage and syncs across tabs. Another has nearly identical code. One dropdown listens for clicks outside itself. Another modal needs the same outside-click behavior. Repeating that logic in every component makes the code harder to maintain and easier to break.
+
+Custom hooks exist to solve that repetition. A custom hook lets you extract reusable stateful logic into a normal function that starts with `use` and calls other hooks internally. The key idea is that custom hooks share behavior and logic, not UI. They do not render JSX. They make components cleaner by moving reusable logic into focused units.
+
+This matters because modern React apps are often more about organizing logic well than simply writing JSX. Custom hooks are one of the best tools for that organization.
+
+## How it works
+
+A custom hook is just a JavaScript or TypeScript function whose name starts with `use` and which calls React hooks such as `useState`, `useEffect`, `useMemo`, or other custom hooks. React treats custom hooks like normal hooks for the purpose of the rules of hooks. That means they must be called consistently at the top level of a React component or another custom hook.
+
+The `use` prefix is not just style. It signals that the function follows the rules of hooks and may call hooks internally. A regular utility function cannot call `useState` or `useEffect`, but a custom hook can.
+
+Custom hooks share logic, not markup. If several components need the same stateful behavior, a custom hook can provide that behavior while letting each component render its own UI. That is one reason custom hooks are usually better than copying hook logic into multiple components.
+
+You should think about extracting a custom hook when:
+
+- the same `useState` + `useEffect` pattern appears in more than one component
+- one component is becoming hard to read because it contains too much logic
+- browser API wiring, subscriptions, or async handling should be reused consistently
+
+Custom hooks can also compose other custom hooks. For example, a `useUserSearch` hook might use both `useFetch` and `useDebounce`.
+
+Before hooks, reusable stateful logic was often shared with higher-order components or render props. Those patterns still exist, but custom hooks are usually simpler because they avoid extra wrapper components and keep the logic closer to the component that uses it.
+
+## Syntax
+
+```tsx
+function useSomething() {
+  const [value, setValue] = useState(0)
+
+  return { value, setValue }
+}
+```
+
+## Code examples
+
+### Example 1 — `useFetch(url)`
+
+This hook fetches data and returns `{ data, loading, error }`. It also uses `AbortController` so stale requests do not keep running after unmount or URL changes.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+type FetchState<T> = {
+  data: T | null
+  loading: boolean
+  error: string
+}
+
+export function useFetch<T>(url: string) {
+  const [state, setState] = useState<FetchState<T>>({
+    data: null,
+    loading: true,
+    error: '',
+  })
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function load() {
+      try {
+        setState({ data: null, loading: true, error: '' })
+
+        const response = await fetch(url, {
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          throw new Error('Request failed')
+        }
+
+        const data = (await response.json()) as T
+
+        setState({
+          data,
+          loading: false,
+          error: '',
+        })
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return
+
+        setState({
+          data: null,
+          loading: false,
+          error: 'Could not load data',
+        })
+      }
+    }
+
+    void load()
+
+    return () => {
+      controller.abort()
+    }
+  }, [url])
+
+  return state
+}
+```
+
+Usage:
+
+```tsx
+type User = {
+  id: number
+  name: string
+}
+
+function UserList() {
+  const { data, loading, error } = useFetch<User[]>(
+    'https://jsonplaceholder.typicode.com/users',
+  )
+
+  if (loading) return <p>Loading users...</p>
+  if (error) return <p>{error}</p>
+
+  return (
+    <ul>
+      {data?.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Edge cases:
+
+- If the URL changes quickly, abort the previous request.
+- If the component unmounts, cleanup should stop the request.
+- Consider exposing a `refetch` API later if the app needs manual reloads.
+
+### Example 2 — `useLocalStorage(key, initialValue)`
+
+This hook keeps a value in React state and localStorage, and it also syncs updates across tabs.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export function useLocalStorage<T>(key: string, initialValue: T) {
+  const [value, setValue] = useState<T>(() => {
+    if (typeof window === 'undefined') {
+      return initialValue
+    }
+
+    try {
+      const storedValue = window.localStorage.getItem(key)
+      return storedValue ? (JSON.parse(storedValue) as T) : initialValue
+    } catch {
+      return initialValue
+    }
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value))
+    } catch {
+      // Ignore storage write errors.
+    }
+  }, [key, value])
+
+  useEffect(() => {
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== key || event.newValue === null) return
+
+      setValue(JSON.parse(event.newValue) as T)
+    }
+
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [key])
+
+  return [value, setValue] as const
+}
+```
+
+Usage:
+
+```tsx
+function ThemePreference() {
+  const [theme, setTheme] = useLocalStorage<'light' | 'dark'>('theme', 'light')
+
+  return (
+    <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+      Theme: {theme}
+    </button>
+  )
+}
+```
+
+Edge cases:
+
+- localStorage may be unavailable in some environments.
+- JSON parsing can fail if the stored value is corrupted.
+- Only browser tabs trigger the `storage` event for cross-tab sync.
+
+### Example 3 — `useDebounce(value, delay)`
+
+This hook delays updates so fast-changing values do not trigger work immediately.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export function useDebounce<T>(value: T, delay: number) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [value, delay])
+
+  return debouncedValue
+}
+```
+
+Usage:
+
+```tsx
+function SearchBox() {
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, 400)
+
+  useEffect(() => {
+    if (!debouncedQuery) return
+    console.log('Search with:', debouncedQuery)
+  }, [debouncedQuery])
+
+  return (
+    <input
+      value={query}
+      onChange={(event) => setQuery(event.target.value)}
+    />
+  )
+}
+```
+
+Edge cases:
+
+- If `delay` changes, the timer should restart.
+- Debounce delays updates, so the UI should still show the live input value separately if needed.
+
+### Example 4 — `useToggle(initialValue)`
+
+This hook wraps common boolean state behavior in a reusable API.
+
+```tsx
+import { useState } from 'react'
+
+export function useToggle(initialValue = false) {
+  const [value, setValue] = useState(initialValue)
+
+  function toggle() {
+    setValue((current) => !current)
+  }
+
+  function turnOn() {
+    setValue(true)
+  }
+
+  function turnOff() {
+    setValue(false)
+  }
+
+  return {
+    value,
+    toggle,
+    turnOn,
+    turnOff,
+  }
+}
+```
+
+Usage:
+
+```tsx
+function DetailsPanel() {
+  const { value, toggle } = useToggle(false)
+
+  return (
+    <section>
+      <button onClick={toggle}>{value ? 'Hide' : 'Show'} details</button>
+      {value ? <p>Details are visible.</p> : null}
+    </section>
+  )
+}
+```
+
+Edge cases:
+
+- Keep the API simple and predictable.
+- For advanced patterns, you can also accept a controlled value from outside, but that is optional.
+
+### Example 5 — `usePrevious(value)`
+
+This hook stores the previous render’s value.
+
+```tsx
+import { useEffect, useRef } from 'react'
+
+export function usePrevious<T>(value: T) {
+  const ref = useRef<T | undefined>(undefined)
+
+  useEffect(() => {
+    ref.current = value
+  }, [value])
+
+  return ref.current
+}
+```
+
+Usage:
+
+```tsx
+function PriceTracker({ price }: { price: number }) {
+  const previousPrice = usePrevious(price)
+
+  return (
+    <p>
+      Current: {price} | Previous: {previousPrice ?? 'none yet'}
+    </p>
+  )
+}
+```
+
+Edge cases:
+
+- The first render has no previous value.
+- This is based on the previous committed render, not some arbitrary old history.
+
+### Example 6 — `useMediaQuery(query)`
+
+This hook reads a CSS media query from JavaScript.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.matchMedia(query).matches
+  })
+
+  useEffect(() => {
+    const mediaQueryList = window.matchMedia(query)
+
+    function handleChange(event: MediaQueryListEvent) {
+      setMatches(event.matches)
+    }
+
+    setMatches(mediaQueryList.matches)
+    mediaQueryList.addEventListener('change', handleChange)
+
+    return () => {
+      mediaQueryList.removeEventListener('change', handleChange)
+    }
+  }, [query])
+
+  return matches
+}
+```
+
+Usage:
+
+```tsx
+function ResponsiveMessage() {
+  const isDesktop = useMediaQuery('(min-width: 768px)')
+
+  return <p>{isDesktop ? 'Desktop layout' : 'Mobile layout'}</p>
+}
+```
+
+Edge cases:
+
+- On the server, no `window` exists, so return a safe default.
+- Some older browsers use deprecated media query listener APIs, but modern `addEventListener` is fine for most current apps.
+
+### Example 7 — `useClickOutside(ref, handler)`
+
+This hook runs a callback when the user clicks outside a referenced element.
+
+```tsx
+import { useEffect } from 'react'
+import type { RefObject } from 'react'
+
+export function useClickOutside<T extends HTMLElement>(
+  ref: RefObject<T>,
+  handler: () => void,
+) {
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!ref.current) return
+
+      if (!ref.current.contains(event.target as Node)) {
+        handler()
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [ref, handler])
+}
+```
+
+Usage:
+
+```tsx
+function Dropdown() {
+  const [open, setOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+
+  useClickOutside(dropdownRef, () => setOpen(false))
+
+  return (
+    <div ref={dropdownRef}>
+      <button onClick={() => setOpen((value) => !value)}>Toggle</button>
+      {open ? <div>Menu content</div> : null}
+    </div>
+  )
+}
+```
+
+Edge cases:
+
+- The handler should stay stable if possible to avoid rebinding too often.
+- Think about touch events if the app needs them.
+
+### Example 8 — `useWindowSize()`
+
+This hook tracks the browser viewport size.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+type WindowSize = {
+  width: number
+  height: number
+}
+
+export function useWindowSize() {
+  const [size, setSize] = useState<WindowSize>({
+    width: 0,
+    height: 0,
+  })
+
+  useEffect(() => {
+    function handleResize() {
+      setSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  return size
+}
+```
+
+Usage:
+
+```tsx
+function WindowInfo() {
+  const { width, height } = useWindowSize()
+
+  return <p>{width} x {height}</p>
+}
+```
+
+Edge cases:
+
+- On the server, initial width and height are unknown.
+- Resize events can fire often, so be mindful if expensive calculations depend on them.
+
+### Example 9 — `useOnlineStatus()`
+
+This hook tracks whether the browser is currently online.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(() => {
+    if (typeof navigator === 'undefined') return true
+    return navigator.onLine
+  })
+
+  useEffect(() => {
+    function handleOnline() {
+      setIsOnline(true)
+    }
+
+    function handleOffline() {
+      setIsOnline(false)
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  return isOnline
+}
+```
+
+Usage:
+
+```tsx
+function NetworkBanner() {
+  const isOnline = useOnlineStatus()
+
+  return <p>{isOnline ? 'You are online' : 'You are offline'}</p>
+}
+```
+
+Edge cases:
+
+- `navigator.onLine` is helpful but not perfect. It reflects browser network status, not always true backend reachability.
+
+### Example 10 — `useInterval(callback, delay)`
+
+This hook creates a declarative interval with cleanup.
+
+```tsx
+import { useEffect, useRef } from 'react'
+
+export function useInterval(callback: () => void, delay: number | null) {
+  const savedCallback = useRef(callback)
+
+  useEffect(() => {
+    savedCallback.current = callback
+  }, [callback])
+
+  useEffect(() => {
+    if (delay === null) return
+
+    const intervalId = window.setInterval(() => {
+      savedCallback.current()
+    }, delay)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [delay])
+}
+```
+
+Usage:
+
+```tsx
+function Clock() {
+  const [seconds, setSeconds] = useState(0)
+
+  useInterval(() => {
+    setSeconds((value) => value + 1)
+  }, 1000)
+
+  return <p>{seconds}s</p>
+}
+```
+
+Edge cases:
+
+- Passing `null` lets you pause the interval.
+- The saved callback ref avoids stale closure issues.
+
+### Example 11 — `useForm(initialValues)`
+
+This hook keeps form values, touched fields, an `onChange` handler, and reset behavior together.
+
+```tsx
+import { useState } from 'react'
+
+type FormValues = Record<string, string>
+type TouchedValues = Record<string, boolean>
+
+export function useForm<T extends FormValues>(initialValues: T) {
+  const [values, setValues] = useState<T>(initialValues)
+  const [touched, setTouched] = useState<TouchedValues>({})
+
+  function handleChange(
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    const { name, value } = event.target
+
+    setValues((current) => ({
+      ...current,
+      [name]: value,
+    }))
+  }
+
+  function handleBlur(
+    event: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    const { name } = event.target
+
+    setTouched((current) => ({
+      ...current,
+      [name]: true,
+    }))
+  }
+
+  function reset() {
+    setValues(initialValues)
+    setTouched({})
+  }
+
+  return {
+    values,
+    touched,
+    handleChange,
+    handleBlur,
+    reset,
+    setValues,
+  }
+}
+```
+
+Usage:
+
+```tsx
+function SignupForm() {
+  const { values, touched, handleChange, handleBlur, reset } = useForm({
+    name: '',
+    email: '',
+  })
+
+  return (
+    <form>
+      <input
+        name="name"
+        value={values.name}
+        onChange={handleChange}
+        onBlur={handleBlur}
+      />
+      <input
+        name="email"
+        value={values.email}
+        onChange={handleChange}
+        onBlur={handleBlur}
+      />
+      <button type="button" onClick={reset}>Reset</button>
+      <p>Name touched: {touched.name ? 'yes' : 'no'}</p>
+    </form>
+  )
+}
+```
+
+Edge cases:
+
+- If `initialValues` changes later, the hook will not automatically reset unless you add that behavior intentionally.
+- For more advanced forms, you may also add validation and submit helpers.
+
+<LivePreview id="custom-hooks" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Treating a custom hook like a component.
+**Fix:** Remember that hooks do not render anything.
+**Why:** A custom hook returns logic and state, not JSX.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Naming a hook without the `use` prefix.
+**Fix:** Always start custom hook names with `use`.
+**Why:** React and lint rules use that naming convention to enforce the rules of hooks.
+</Callout>
+
+<Callout type="tip">
+Extract a custom hook when the same `useState` + `useEffect` combination appears in more than one component.
+</Callout>
+
+<Callout type="tip">
+Custom hooks make components much cleaner — the component focuses on UI, the hook on logic.
+</Callout>
+
+<Callout type="note">
+Custom hooks are not components — they do not render anything.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a custom hook and how is it different from a regular function?
+**A:** A custom hook is a function whose name starts with `use` and that can call React hooks inside it. A regular utility function cannot call hooks. Custom hooks are specifically for extracting reusable stateful logic that follows the rules of hooks.
+</Callout>
+
+## How this is used in real projects
+
+Custom hooks are everywhere in mature React codebases. Teams create hooks for data fetching, localStorage persistence, debounced search, responsive layout checks, form handling, polling, online status, auth access, and browser event wiring. These are all examples of behavior that many components may need, but each screen still wants to render that behavior differently.
+
+Custom hooks also make code review and testing easier. When fetch logic, storage logic, or outside-click logic is extracted into one hook, that behavior becomes easier to reason about and easier to improve consistently across the app.
+
+Most importantly, custom hooks let components focus on what they should show, while the hook focuses on how the logic works behind the scenes.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is a custom hook?
+**A:** A custom hook is a function starting with `use` that calls React hooks internally and returns reusable stateful logic. It allows multiple components to share behavior without sharing markup.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between a custom hook and a regular utility function?
+**A:** A regular utility function can transform values or perform ordinary logic, but it cannot call React hooks. A custom hook can call hooks like `useState` and `useEffect`, which means it can manage reusable React stateful behavior.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why must custom hooks start with `use`?
+**A:** The `use` prefix tells React lint rules and other developers that the function follows the rules of hooks and may call hooks internally. Without that naming convention, hook usage becomes harder to track and easier to misuse.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you share stateful logic between components without custom hooks, and why are hooks better?
+**A:** Before custom hooks, developers often used higher-order components or render props to share stateful logic. Those patterns work, but they usually add extra wrapper layers and more indirection. Custom hooks are usually cleaner because they let you reuse logic directly without changing the component tree.
+</Callout>
+
+<Callout type="interview">
+**Q:** Write a custom `useFetch` hook.
+**A:** A strong `useFetch` hook should store `data`, `loading`, and `error`, start a request when the URL changes, and clean up correctly with `AbortController` so stale requests do not update state after unmount. The example earlier in this lesson is a complete implementation of that pattern.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Can a custom hook render JSX?"
+  options={[
+    "Yes, if it returns a component",
+    "No — hooks are not components",
+    "Only when using TypeScript",
+    "Only in Next.js"
+  ]}
+  correct={1}
+  explanation="Custom hooks return logic and state, not rendered UI. Components render JSX, hooks do not."
+/>
+
+<Quiz
+  question="What naming rule must custom hooks follow?"
+  options={[
+    "They must end with Hook",
+    "They must start with use",
+    "They must be exported as default",
+    "They must live in a hooks folder"
+  ]}
+  correct={1}
+  explanation="Custom hooks must start with `use` so React lint rules and other developers can recognize that the function follows the rules of hooks."
+/>
+
+<Quiz
+  question="What can a custom hook do that a regular function cannot?"
+  options={[
+    "Render JSX directly",
+    "Call other hooks",
+    "Use JavaScript objects",
+    "Return multiple values"
+  ]}
+  correct={1}
+  explanation="A custom hook can call React hooks like `useState` and `useEffect`, while a regular utility function cannot."
+/>
+
+<MarkDone slug="18-custom-hooks" track="react" />

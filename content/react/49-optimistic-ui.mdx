@@ -1,0 +1,291 @@
+---
+title: "Optimistic UI with React"
+description: "Learn what optimistic UI means, when it improves user experience, and how useOptimistic models immediate updates with rollback."
+level: "advanced"
+minutes: 10
+stage: "Stage 7 — Modern React"
+slug: "49-optimistic-ui"
+track: "react"
+---
+
+## Why this exists
+
+Waiting for the server before showing every change can make an app feel slow, even when the backend is behaving normally. A user clicks Like, adds a todo, or submits a quick comment, and then they stare at a spinner while the UI catches up. That delay may only be a fraction of a second, but it still makes the product feel hesitant.
+
+Optimistic UI solves that by assuming the change will probably succeed and updating the interface immediately. The app shows the new state right away, then confirms it when the server response arrives. If the server rejects the change, the app rolls back or shows recovery UI.
+
+This topic matters because optimistic UI is one of the clearest examples of user-experience thinking in frontend architecture. It is not just about data updates. It is about making the interface feel responsive while still staying honest about failure cases.
+
+## How it works
+
+An optimistic update has three phases:
+
+- show the intended result immediately
+- wait for the server response
+- either confirm the result or roll it back
+
+That means optimistic UI always carries some risk. If the server fails, the UI must recover cleanly. So the first design question is not "Can I make this optimistic?" The better question is "If this fails, can the app recover clearly and safely?"
+
+React’s modern `useOptimistic` API gives a structured way to model this pattern. Instead of manually duplicating pending arrays or temporary state everywhere, you can describe how the optimistic version of the data should look while the server action is still pending. The real committed state and the optimistic state work together so the UI can feel instant without losing track of what is actually confirmed.
+
+Optimistic UI is usually a good fit when:
+
+- the action is fast and likely to succeed
+- the UI benefit of immediate feedback is high
+- rollback is understandable
+
+Common examples are likes, toggles, simple todo creation, reordering items, dismissing notifications, or adding lightweight comments.
+
+It is a worse fit when failure is common or the action is risky, such as destructive billing updates or sensitive workflow approvals. In those cases, showing a false success state may be more confusing than helpful.
+
+## Syntax
+
+```tsx
+const [optimisticTodos, addOptimisticTodo] = useOptimistic(
+  todos,
+  (currentTodos, newTodo) => [newTodo, ...currentTodos],
+)
+```
+
+## Code examples
+
+### Example 1 — Like button with optimistic count update
+
+This is the simplest optimistic pattern. The count changes right away.
+
+```tsx
+import { useState } from 'react'
+
+export default function LikeButton() {
+  const [likes, setLikes] = useState(10)
+
+  async function handleLike() {
+    setLikes((current) => current + 1)
+
+    try {
+      await fakeLikeRequest()
+    } catch {
+      setLikes((current) => current - 1)
+    }
+  }
+
+  return <button onClick={handleLike}>Likes: {likes}</button>
+}
+```
+
+The user sees the update instantly, but the code still rolls back if the request fails.
+
+### Example 2 — Todo item added optimistically, then confirmed
+
+List creation is a very common optimistic case.
+
+```tsx
+import { useState } from 'react'
+
+type Todo = {
+  id: number
+  text: string
+  pending?: boolean
+}
+
+export default function TodoList() {
+  const [todos, setTodos] = useState<Todo[]>([])
+
+  async function addTodo(text: string) {
+    const optimisticId = Date.now()
+
+    setTodos((current) => [
+      { id: optimisticId, text, pending: true },
+      ...current,
+    ])
+
+    const savedTodo = await saveTodo(text)
+
+    setTodos((current) =>
+      current.map((todo) =>
+        todo.id === optimisticId
+          ? { ...savedTodo, pending: false }
+          : todo,
+      ),
+    )
+  }
+}
+```
+
+The pending row appears immediately, then becomes a confirmed row once the server responds.
+
+### Example 3 — Failed optimistic update with rollback
+
+Rollback is part of the pattern, not an edge case.
+
+```tsx
+async function addTodo(text: string) {
+  const optimisticId = Date.now()
+
+  setTodos((current) => [
+    { id: optimisticId, text, pending: true },
+    ...current,
+  ])
+
+  try {
+    const savedTodo = await saveTodo(text)
+
+    setTodos((current) =>
+      current.map((todo) =>
+        todo.id === optimisticId
+          ? { ...savedTodo, pending: false }
+          : todo,
+      ),
+    )
+  } catch {
+    setTodos((current) =>
+      current.filter((todo) => todo.id !== optimisticId),
+    )
+    setMessage('Could not save the todo. Try again.')
+  }
+}
+```
+
+The UI must not leave a fake success state sitting there if the request fails.
+
+### Example 4 — Pending row style for optimistic items
+
+Users should be able to tell which items are still provisional.
+
+```tsx
+{todos.map((todo) => (
+  <li
+    key={todo.id}
+    className={todo.pending ? 'opacity-60 italic' : ''}
+  >
+    {todo.text} {todo.pending ? '(saving...)' : ''}
+  </li>
+))}
+```
+
+This is important because optimistic UI should feel fast, but it should not hide the difference between pending and confirmed state.
+
+### Example 5 — Pessimistic vs optimistic UX
+
+This comparison shows why the pattern feels better when the action is a good fit.
+
+```tsx
+// Pessimistic flow
+setSaving(true)
+const savedTodo = await saveTodo(text)
+setTodos((current) => [savedTodo, ...current])
+setSaving(false)
+```
+
+```tsx
+// Optimistic flow
+setTodos((current) => [
+  { id: Date.now(), text, pending: true },
+  ...current,
+])
+const savedTodo = await saveTodo(text)
+```
+
+The optimistic version gives feedback immediately, which is often a better experience for lightweight actions.
+
+<LivePreview id="optimistic-ui" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Treating optimistic UI as if failure almost never matters.
+**Fix:** Always design the rollback or recovery path before adding the optimistic update.
+**Why:** A fast UI that breaks trust on failure is worse than a slightly slower honest one.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Making risky or destructive actions optimistic without a clear recovery story.
+**Fix:** Use optimistic UI mainly for low-risk actions where rollback is understandable.
+**Why:** Some actions are too sensitive to show as successful before the server confirms them.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Not visually marking optimistic items as pending.
+**Fix:** Give pending items a temporary style or label.
+**Why:** Users should understand which state is confirmed and which is still provisional.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting temporary IDs or item identity during optimistic creation.
+**Fix:** Assign a temporary ID so the optimistic row can be updated or removed later.
+**Why:** Without identity, rollback and confirmation logic becomes brittle.
+</Callout>
+
+<Callout type="tip">
+Optimistic UI works best when the user benefit of immediate feedback is high and the rollback story is simple.
+</Callout>
+
+## How this is used in real projects
+
+In real apps, optimistic UI is common in high-frequency, low-risk interactions. A user stars an item, marks a notification as read, adds a quick checklist item, reorders a list, or posts a small comment. These are the kinds of actions where waiting for confirmation before showing any change makes the interface feel unnecessarily sluggish.
+
+The pattern is especially effective when the UI can clearly represent pending state. A temporary row, faded item, inline "saving..." label, or subtle pending badge helps users understand that the system is processing the change. That preserves trust while still making the app feel fast.
+
+The production lesson is that optimistic UI is a contract. You are promising immediate feedback now and correct recovery later. If you cannot deliver both halves cleanly, the action may not be a good optimistic candidate.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is optimistic UI?
+**A:** Optimistic UI is a pattern where the interface updates immediately before the server confirms the action, because the app assumes the request will probably succeed. The UI then either confirms that change when the response arrives or rolls it back if the request fails. The main goal is to improve perceived responsiveness. A strong answer always mentions rollback, not just the instant update.
+</Callout>
+
+<Callout type="interview">
+**Q:** When is optimistic UI a good fit?
+**A:** It is a good fit for actions that are frequent, low-risk, and likely to succeed, especially when the user benefit of instant feedback is high. Examples include likes, lightweight comments, todo creation, and marking items as read. It is less suitable for risky or destructive actions where a false success state would be confusing or dangerous. The key is balancing responsiveness with trust.
+</Callout>
+
+<Callout type="interview">
+**Q:** What problem does `useOptimistic` solve?
+**A:** `useOptimistic` gives React a structured way to describe the temporary optimistic version of state while a real update is still pending. That helps avoid manually duplicating optimistic arrays and scattered rollback logic in every component. It makes the relationship between confirmed state and optimistic state clearer. The hook is most valuable when optimistic updates are common enough that you want a cleaner model than ad hoc local code.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are the risks of optimistic UI?
+**A:** The main risk is showing the user a change that is not actually confirmed yet. If the server rejects the request and the app does not recover clearly, trust drops quickly. There is also a risk of identity bugs if temporary optimistic items are not tracked carefully. Good optimistic UI always includes rollback thinking from the start.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is the core idea of optimistic UI?"
+  options={[
+    "Wait for the server before changing the screen",
+    "Update the UI immediately, then confirm or roll back later",
+    "Avoid all loading states completely",
+    "Replace every server request with local state"
+  ]}
+  correct={1}
+  explanation="Optimistic UI shows the intended result immediately, then confirms it when the server responds or rolls it back if the request fails."
+/>
+
+<Quiz
+  question="Which action is usually a better candidate for optimistic UI?"
+  options={[
+    "Deleting a billing account permanently",
+    "Approving a high-risk compliance action",
+    "Adding a lightweight todo item",
+    "Changing a critical payroll setting"
+  ]}
+  correct={2}
+  explanation="A lightweight todo item is low-risk, likely to succeed, and benefits from immediate feedback, which makes it a strong optimistic candidate."
+/>
+
+<Quiz
+  question="Why should optimistic items often have a pending style?"
+  options={[
+    "To reduce bundle size",
+    "To help users distinguish provisional state from confirmed state",
+    "To avoid using temporary IDs",
+    "To prevent re-renders"
+  ]}
+  correct={1}
+  explanation="Pending styles make it clear that the optimistic change is visible immediately but is still waiting on confirmation."
+/>
+
+<MarkDone slug="49-optimistic-ui" track="react" />

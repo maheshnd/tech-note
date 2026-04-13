@@ -1,0 +1,321 @@
+---
+title: "Modern React form actions"
+description: "Learn how modern React form actions model pending, success, and validation state with useActionState and useFormStatus."
+level: "advanced"
+minutes: 12
+stage: "Stage 7 — Modern React"
+slug: "48-modern-form-actions"
+track: "react"
+---
+
+## Why this exists
+
+For a long time, React form code often followed the same pattern: prevent the default submit event, set a local loading flag, call an async function, store errors in state, and then update success state manually. That works, but the pattern gets repetitive fast. Every serious form ends up rebuilding the same ideas: pending state, returned field errors, submit success, and button disabling during submission.
+
+Modern React form actions make that pattern more explicit. Instead of treating submit logic as an isolated event handler, React gives us APIs that model the form submission as a stateful flow. The result is a clearer mental model for what the form is doing and a cleaner place for the UI to read that state.
+
+This topic matters because forms are one of the most common places where real apps accumulate complexity. Understanding modern form actions helps you think in terms of submit state, not just click handlers.
+
+## How it works
+
+The two main ideas are:
+
+- `useActionState` manages the state returned by a form action
+- `useFormStatus` lets nested UI know whether the form is currently submitting
+
+`useActionState` is useful because a form submit usually returns more than success or failure. It may return field-specific errors, a general message, or a success response. Instead of manually juggling several separate pieces of local state, the action can produce one structured result that the UI reads.
+
+`useFormStatus` is useful because the submit button and related UI often need to know whether a form is currently pending. That lets you disable the button, change its label, or show inline progress without threading pending state through props manually.
+
+The mental model is:
+
+- the form action receives submitted data
+- the action returns the next form state
+- the UI reads that returned state
+- nested controls can read pending submission state through form status
+
+This is different from the older "one submit handler with a pile of state setters" approach. The modern pattern treats submission more like a state transition than a one-off callback.
+
+That said, not every form needs the newer APIs. A tiny local search field or one-input filter form may still be simpler with ordinary controlled state and a normal submit handler. Modern form actions matter most when the form has real submission state, validation state, and user feedback.
+
+## Syntax
+
+```tsx
+const [state, formAction] = useActionState(action, initialState)
+```
+
+```tsx
+function SubmitButton() {
+  const { pending } = useFormStatus()
+
+  return <button disabled={pending}>{pending ? 'Saving...' : 'Save'}</button>
+}
+```
+
+## Code examples
+
+### Example 1 — Basic form with `useActionState`
+
+This is the core shape: the action returns the next form state.
+
+```tsx
+import { useActionState } from 'react'
+
+type ContactState = {
+  message: string
+}
+
+const initialState: ContactState = {
+  message: '',
+}
+
+async function saveContact(
+  _previousState: ContactState,
+  formData: FormData,
+): Promise<ContactState> {
+  const name = String(formData.get('name') ?? '')
+
+  return {
+    message: `Saved ${name}`,
+  }
+}
+
+export default function ContactForm() {
+  const [state, formAction] = useActionState(saveContact, initialState)
+
+  return (
+    <form action={formAction}>
+      <input name="name" />
+      <button type="submit">Save</button>
+      <p>{state.message}</p>
+    </form>
+  )
+}
+```
+
+The form does not need a pile of manual local submission state just to capture the returned result.
+
+### Example 2 — Submit button using `useFormStatus`
+
+Nested UI can react to the form’s pending state directly.
+
+```tsx
+import { useFormStatus } from 'react-dom'
+
+function SubmitButton() {
+  const { pending } = useFormStatus()
+
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? 'Saving...' : 'Save contact'}
+    </button>
+  )
+}
+```
+
+This keeps the button logic focused and avoids manually threading a `pending` prop through the form tree.
+
+### Example 3 — Returning field error messages
+
+Real forms often need field-specific validation.
+
+```tsx
+import { useActionState } from 'react'
+
+type SignupState = {
+  fieldErrors: {
+    email: string
+    password: string
+  }
+}
+
+const initialState: SignupState = {
+  fieldErrors: {
+    email: '',
+    password: '',
+  },
+}
+
+async function signupAction(
+  _previousState: SignupState,
+  formData: FormData,
+): Promise<SignupState> {
+  const email = String(formData.get('email') ?? '')
+  const password = String(formData.get('password') ?? '')
+
+  return {
+    fieldErrors: {
+      email: email.includes('@') ? '' : 'Email must include @',
+      password: password.length >= 8 ? '' : 'Password must be at least 8 characters',
+    },
+  }
+}
+```
+
+The action returns the next validation state directly, and the UI renders those field errors from one structured object.
+
+### Example 4 — Success message after action completion
+
+The same returned state can carry a success message too.
+
+```tsx
+type ProfileState = {
+  message: string
+  success: boolean
+}
+
+const initialState: ProfileState = {
+  message: '',
+  success: false,
+}
+
+async function saveProfile(
+  _previousState: ProfileState,
+  formData: FormData,
+): Promise<ProfileState> {
+  const firstName = String(formData.get('firstName') ?? '')
+
+  return {
+    message: `${firstName} was saved successfully.`,
+    success: true,
+  }
+}
+```
+
+This is a cleaner pattern than scattering separate success flags and messages around the component.
+
+### Example 5 — Classic submit handler vs action-based flow
+
+The modern pattern is easier to reason about because the submit result is centralized.
+
+```tsx
+// Classic submit handler
+async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault()
+  setPending(true)
+  setErrors({})
+  setMessage('')
+
+  try {
+    const result = await saveForm(values)
+    setMessage(result.message)
+  } catch {
+    setErrors({ email: 'Could not save email' })
+  } finally {
+    setPending(false)
+  }
+}
+```
+
+```tsx
+// Action-based mental model
+const [state, formAction] = useActionState(saveFormAction, initialState)
+```
+
+The modern version treats the result of submission as a structured state transition instead of a manual cluster of local state setters.
+
+<LivePreview id="form-actions" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Thinking modern form actions are just a different button-loading trick.
+**Fix:** Treat them as a way to model the whole form submission state, including field errors and success responses.
+**Why:** The real benefit is the clearer mental model, not just disabling the submit button.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using action-based patterns for tiny forms that do not need them.
+**Fix:** Keep simple forms simple and use the newer pattern when submission state is genuinely meaningful.
+**Why:** Not every form needs the same level of structure.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Returning inconsistent state shapes from the action.
+**Fix:** Define a clear initial state and keep every action result in the same shape.
+**Why:** Stable state shape makes the UI easier to render and reason about.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting to reflect pending state in the UI.
+**Fix:** Use `useFormStatus` or equivalent UI feedback so the user can see that submission is in progress.
+**Why:** Pending state is part of the form experience, not an implementation detail.
+</Callout>
+
+<Callout type="tip">
+If a form has field errors, a submit button loading state, and a success banner, it is already a good candidate for thinking in terms of action state.
+</Callout>
+
+<Callout type="note">
+This project’s live preview mirrors the pattern using ordinary client state because the app runtime is still on React 18. The lesson content covers the real modern APIs so the mental model is ready when the project upgrades.
+</Callout>
+
+## How this is used in real projects
+
+In real apps, modern form actions fit especially well in account settings, onboarding flows, profile forms, support forms, and any submit flow that returns structured validation. A user edits values, submits, receives field-specific feedback if needed, and sees a clear success state when the save completes. That is exactly the kind of repetitive UI state this pattern helps organize.
+
+The pattern is also valuable because it improves component boundaries. Instead of scattering pending state, errors, and success messages across event handlers and child props, the form can read one coherent submission state. Buttons, status banners, and field components become easier to reason about because they are reacting to one central model.
+
+The deeper production lesson is that forms are state machines in disguise. They move from idle to pending to success or error. Modern form actions make that truth easier to model directly.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What does `useActionState` solve in modern React?
+**A:** `useActionState` helps model the state returned by a form action in a more structured way. Instead of manually juggling separate pending, error, and success values through a traditional submit handler, the action can return the next form state directly. That makes the submit flow easier to reason about and keeps the UI tied to one coherent result shape. It is especially useful for real forms with validation and server responses.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is `useFormStatus` for?
+**A:** `useFormStatus` lets components inside a form read whether the form is currently pending. It is most often used by submit buttons or inline status UI so they can disable themselves or show a loading label while submission is in progress. The big advantage is that nested components can read this state without the parent manually passing it down through props. That keeps the form tree cleaner.
+</Callout>
+
+<Callout type="interview">
+**Q:** When are modern form actions worth using?
+**A:** They are worth using when the form has meaningful submission state such as pending, field errors, success messaging, and returned result data. For a tiny local filter form, a regular submit handler may still be simpler. For a settings or onboarding form, the modern action pattern is usually much clearer. A strong answer explains that the right choice depends on the complexity of the form flow.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why is a stable returned state shape important in action-based forms?
+**A:** A stable returned state shape makes the UI predictable. Components know exactly where to read messages, field errors, and success flags on every render. If the action returns different shapes in different branches, the UI becomes harder to write and easier to break. Good action-based design treats the form state like a real typed contract.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is the main role of `useActionState`?"
+  options={[
+    "It creates route params",
+    "It manages the state returned by a form action",
+    "It memoizes expensive form calculations",
+    "It replaces every controlled input"
+  ]}
+  correct={1}
+  explanation="`useActionState` is about managing the result state of a form action, such as messages, errors, and success values."
+/>
+
+<Quiz
+  question="What does `useFormStatus` usually help with?"
+  options={[
+    "Reading whether a form submission is pending",
+    "Generating input IDs",
+    "Fetching data after mount",
+    "Creating refs for child inputs"
+  ]}
+  correct={0}
+  explanation="`useFormStatus` is most commonly used so nested form UI can know whether the form is currently submitting."
+/>
+
+<Quiz
+  question="Which forms benefit most from action-based patterns?"
+  options={[
+    "Only forms with one checkbox",
+    "Forms with real validation, pending state, and success/error feedback",
+    "Only forms with file uploads",
+    "Only uncontrolled forms"
+  ]}
+  correct={1}
+  explanation="Action-based form patterns are most helpful when the form has a meaningful submission lifecycle with validation, pending state, and user feedback."
+/>
+
+<MarkDone slug="48-modern-form-actions" track="react" />

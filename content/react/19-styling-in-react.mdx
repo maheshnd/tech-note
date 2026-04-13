@@ -1,0 +1,484 @@
+---
+title: "Styling in React"
+description: "Learn the main styling approaches in React, from plain CSS and CSS Modules to inline styles, Tailwind, theming, and clean conditional class composition."
+level: "intermediate"
+minutes: 10
+stage: "Stage 4 — Intermediate"
+slug: "19-styling-in-react"
+track: "react"
+---
+
+## Why this exists
+
+React components describe structure and behavior, but users experience the product through styling. Layout, spacing, color, typography, hover states, error states, and responsive behavior all shape whether an interface feels clear and polished or confusing and fragile. A component is not complete just because it renders the right data. It also needs to look and feel right.
+
+This topic exists because React does not force one styling approach. You can use plain CSS, CSS Modules, inline styles, CSS-in-JS libraries, Tailwind CSS, and design-system utilities. That flexibility is powerful, but it also means developers need a clear mental model for when each approach makes sense and what tradeoffs come with each one.
+
+Strong React styling is not just about making things pretty. It is about choosing patterns that scale across components and teams. That means predictable class naming, reusable variants, theme support, responsive behavior, and consistent spacing and typography.
+
+## How it works
+
+React supports multiple styling strategies because JSX eventually renders normal DOM elements. Those elements can receive class names, inline styles, CSS variables, and other browser-supported styling hooks.
+
+Plain CSS is the simplest starting point. You import a stylesheet, define classes, and use them in JSX. This gives you the full power of the cascade, pseudo-selectors, media queries, and browser-native styling. The downside is that global CSS can create class name collisions and unintended side effects as the app grows.
+
+CSS Modules solve that scoping problem by generating unique class names for each module file. A file named `Button.module.css` exports a `styles` object, and `styles.button` maps to a generated class name. This makes component-level styles safer and easier to maintain.
+
+Inline styles use a JavaScript object passed to the `style` prop. They are useful for small dynamic values like width, transform, or animation delay. But inline styles have limitations: they do not support pseudo-selectors like `:hover`, they do not support media queries, and they can become awkward for complex styling.
+
+CSS-in-JS libraries like styled-components or Emotion let you write CSS inside JavaScript files and attach styles to components directly. These tools can be expressive and dynamic, but they also add runtime or build complexity and are more opinionated than plain CSS or Tailwind.
+
+Tailwind CSS takes a utility-first approach. Instead of writing many custom classes, you compose UI with small utility classes like `px-4`, `text-sm`, `rounded-xl`, `bg-slate-900`, and `md:grid-cols-2`. This can make styling faster and more consistent, especially when paired with a design system and helper utilities like `clsx` or `cn()`.
+
+Conditional styling is another major concern in React. Components often need active, disabled, selected, loading, and error states. Writing string concatenation by hand gets messy quickly. Utilities like `clsx` or a project helper like `cn()` keep conditional class composition much cleaner and easier to reason about.
+
+Theming usually starts with CSS custom properties or a framework theme configuration. A theme is just a system for keeping colors, spacing, typography, and other tokens consistent. In Tailwind-based projects, themes often live in the Tailwind config and CSS variables.
+
+This leads directly into design system thinking. A mature app should not have random spacing and colors everywhere. It should use consistent tokens, button variants, typography scales, and layout patterns. Styling decisions are part of architecture, not just decoration.
+
+## Syntax
+
+```tsx
+<button className="rounded-xl bg-accent px-4 py-2 text-white">Save</button>
+```
+
+## Code examples
+
+### Example 1 — Plain CSS import
+
+Plain CSS is the most direct approach.
+
+```css
+/* app.css */
+.page-title {
+  font-size: 2rem;
+  color: #162033;
+}
+```
+
+```tsx
+import './app.css'
+
+export default function Page() {
+  return <h1 className="page-title">React notes</h1>
+}
+```
+
+This uses global CSS, so the class name can affect any matching element in the app.
+
+### Example 2 — CSS Modules
+
+CSS Modules scope styles to the component file.
+
+```css
+/* Button.module.css */
+.button {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: #c25b2a;
+  color: white;
+}
+```
+
+```tsx
+import styles from './Button.module.css'
+
+export default function Button() {
+  return <button className={styles.button}>Save</button>
+}
+```
+
+The generated class name is unique, which avoids collisions.
+
+### Example 3 — CSS Modules with `composes`
+
+CSS Modules can build variants from shared base styles.
+
+```css
+/* Button.module.css */
+.baseButton {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+}
+
+.primaryButton {
+  composes: baseButton;
+  background: #c25b2a;
+  color: white;
+}
+
+.secondaryButton {
+  composes: baseButton;
+  border: 1px solid #d7c8b1;
+  background: white;
+  color: #162033;
+}
+```
+
+This keeps repeated styles in one place.
+
+### Example 4 — Inline styles
+
+Inline styles use a JavaScript object.
+
+```tsx
+export default function InlineStyleExample() {
+  return (
+    <p
+      style={{
+        color: '#162033',
+        fontWeight: 600,
+        marginTop: '1rem',
+      }}
+    >
+      Inline styled text
+    </p>
+  )
+}
+```
+
+This works well for small dynamic values, but it is not ideal for large styling systems.
+
+### Example 5 — Inline styles with a dynamic progress width
+
+Inline styles are especially useful when a numeric value drives one property.
+
+```tsx
+export default function ProgressBar({ progress }: { progress: number }) {
+  return (
+    <div style={{ width: '100%', background: '#eee', borderRadius: '999px' }}>
+      <div
+        style={{
+          width: `${progress}%`,
+          height: '8px',
+          background: '#1f8f55',
+          borderRadius: '999px',
+        }}
+      />
+    </div>
+  )
+}
+```
+
+### Example 6 — Tailwind basic utilities
+
+Tailwind composes UI from small utility classes.
+
+```tsx
+export default function TailwindCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-white p-4 shadow-panel">
+      <h2 className="font-display text-xl text-ink">Styled card</h2>
+      <p className="mt-2 text-sm text-ink-muted">Built with utility classes.</p>
+    </div>
+  )
+}
+```
+
+### Example 7 — Tailwind responsive classes
+
+Responsive classes change styles at breakpoints.
+
+```tsx
+export default function ResponsiveGrid() {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="rounded-xl bg-panel p-4">A</div>
+      <div className="rounded-xl bg-panel p-4">B</div>
+      <div className="rounded-xl bg-panel p-4">C</div>
+    </div>
+  )
+}
+```
+
+### Example 8 — Tailwind dark mode classes
+
+Dark mode styling can live directly in class names.
+
+```tsx
+export default function DarkCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-white p-4 text-ink dark:border-border-dark dark:bg-[#0d1621] dark:text-ink-dark">
+      Dark mode aware card
+    </div>
+  )
+}
+```
+
+### Example 9 — Conditional Tailwind classes: bad vs good
+
+String templates can get messy quickly.
+
+```tsx
+function BadButton({ active }: { active: boolean }) {
+  return (
+    <button className={`rounded-xl px-4 py-2 ${active ? 'bg-accent text-white' : 'bg-white text-ink'}`}>
+      Click me
+    </button>
+  )
+}
+```
+
+```tsx
+import clsx from 'clsx'
+
+function GoodButton({ active }: { active: boolean }) {
+  return (
+    <button
+      className={clsx(
+        'rounded-xl px-4 py-2',
+        active ? 'bg-accent text-white' : 'bg-white text-ink',
+      )}
+    >
+      Click me
+    </button>
+  )
+}
+```
+
+The second version is easier to scale when more conditions appear.
+
+### Example 10 — `clsx` / `classnames` style composition
+
+This is the clean way to build conditional classes.
+
+```tsx
+import { cn } from '@/lib/utils'
+
+function Badge({
+  error,
+  disabled,
+}: {
+  error: boolean
+  disabled: boolean
+}) {
+  return (
+    <span
+      className={cn(
+        'rounded-full px-3 py-1 text-sm font-medium',
+        error && 'bg-rose-100 text-rose-700',
+        disabled && 'opacity-60',
+        !error && 'bg-success-soft text-success',
+      )}
+    >
+      Status
+    </span>
+  )
+}
+```
+
+### Example 11 — Dynamic Tailwind variants
+
+This is a common component pattern.
+
+```tsx
+import { cn } from '@/lib/utils'
+
+type Variant = 'primary' | 'secondary' | 'danger'
+
+function Button({
+  variant,
+  children,
+}: {
+  variant: Variant
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      className={cn(
+        'rounded-xl px-4 py-2 font-semibold transition-colors',
+        variant === 'primary' && 'bg-accent text-white',
+        variant === 'secondary' && 'border border-border bg-white text-ink',
+        variant === 'danger' && 'bg-rose-600 text-white',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+```
+
+### Example 12 — Styled-components concept
+
+This shows the idea of CSS-in-JS.
+
+```tsx
+import styled from 'styled-components'
+
+const Card = styled.div`
+  padding: 1rem;
+  border-radius: 1rem;
+  background: white;
+  border: 1px solid #d7c8b1;
+`
+
+export default function StyledCard() {
+  return <Card>Styled with CSS-in-JS</Card>
+}
+```
+
+Styled-components and Emotion colocate styles with components, but they also add another layer of tooling and conventions.
+
+### Example 13 — CSS custom properties for theming
+
+CSS variables make themes easier to maintain.
+
+```css
+:root {
+  --color-surface: #ffffff;
+  --color-text: #162033;
+}
+
+.dark {
+  --color-surface: #0d1621;
+  --color-text: #e5ecf6;
+}
+```
+
+```tsx
+export default function ThemeBox() {
+  return (
+    <div
+      style={{
+        background: 'var(--color-surface)',
+        color: 'var(--color-text)',
+      }}
+    >
+      Theme-aware box
+    </div>
+  )
+}
+```
+
+### Example 14 — Complete example: variant button with Tailwind and `cn()`
+
+This is the practical pattern you will use often in real projects.
+
+```tsx
+import { cn } from '@/lib/utils'
+
+type ButtonVariant = 'primary' | 'secondary' | 'danger'
+
+type ButtonProps = {
+  variant?: ButtonVariant
+  disabled?: boolean
+  children: React.ReactNode
+}
+
+export default function Button({
+  variant = 'primary',
+  disabled = false,
+  children,
+}: ButtonProps) {
+  return (
+    <button
+      disabled={disabled}
+      className={cn(
+        'min-h-11 rounded-2xl px-4 py-3 text-sm font-semibold transition-colors',
+        disabled && 'cursor-not-allowed opacity-60',
+        variant === 'primary' &&
+          'bg-accent text-white hover:bg-[#ab4f23]',
+        variant === 'secondary' &&
+          'border border-border bg-white text-ink hover:bg-panel',
+        variant === 'danger' &&
+          'bg-rose-600 text-white hover:bg-rose-700',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+```
+
+This keeps styling variants explicit, reusable, and readable.
+
+<LivePreview id="styling-react" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Building Tailwind classes dynamically like `text-${color}-500`.
+**Fix:** Use explicit class branches with `clsx` or `cn()`.
+**Why:** Tailwind cannot reliably detect fully dynamic class names during build.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using inline styles for hover, focus, or media query behavior.
+**Fix:** Use CSS, CSS Modules, Tailwind utilities, or another CSS-based solution.
+**Why:** Inline styles do not support pseudo-selectors or media queries.
+</Callout>
+
+<Callout type="tip">
+Use CSS Modules for component styles to avoid class name collisions.
+</Callout>
+
+<Callout type="tip">
+Use `clsx` or `cn()` for conditional Tailwind classes — not string concatenation.
+</Callout>
+
+<Callout type="warning">
+Do not construct Tailwind class names dynamically like `text-\${color}-500` — Tailwind cannot detect them.
+</Callout>
+
+<Callout type="note">
+Inline styles cannot handle hover, focus, media queries — use CSS for those.
+</Callout>
+
+## How this is used in real projects
+
+Real React apps often mix styling strategies instead of using only one. A team may use Tailwind for layout and utility styling, CSS Modules for a few highly specific component styles, CSS variables for themes, and a small helper like `cn()` for state-based class composition.
+
+The key is consistency. A good codebase makes it obvious how to style buttons, cards, forms, empty states, and responsive layouts. That is where design system thinking becomes important. Styling is not just local decoration. It is part of the product language.
+
+This is also why utility helpers matter. Once a component has active, disabled, error, selected, and loading states, readable class composition becomes essential. Strong styling patterns keep those states maintainable instead of turning them into string soup.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between CSS Modules and plain CSS?
+**A:** Plain CSS is global by default, which means class names can collide and styles can leak across the app. CSS Modules scope class names to the component file, which makes styles safer and easier to maintain in larger codebases.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is CSS-in-JS?
+**A:** CSS-in-JS is an approach where styles are written inside JavaScript or TypeScript files, often with libraries like styled-components or Emotion. It allows dynamic styling and colocation of styles with components, but it also adds another abstraction layer and tradeoffs around tooling and runtime behavior.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why should you use `clsx` for conditional Tailwind classes?
+**A:** `clsx` or a wrapper like `cn()` keeps conditional class composition readable and explicit. It is easier to scale than manual string concatenation and helps avoid messy class logic when components have many visual states.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the utility-first approach in Tailwind?
+**A:** Utility-first styling means building UI by composing small single-purpose classes such as spacing, color, border, and typography utilities directly in the markup. Instead of writing many custom CSS classes, you assemble the design from reusable building blocks.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Can you use :hover with inline styles in React?"
+  options={[
+    "Yes, inline styles fully support pseudo-selectors",
+    "No — inline styles do not support pseudo-selectors",
+    "Only in TypeScript projects",
+    "Only when using styled-components"
+  ]}
+  correct={1}
+  explanation="Inline styles are just JavaScript objects applied to an element. They do not support pseudo-selectors like `:hover` or `:focus`."
+/>
+
+<Quiz
+  question="What does CSS Modules do?"
+  options={[
+    "It makes all CSS global",
+    "It scopes class names to the component to avoid collisions",
+    "It replaces Tailwind completely",
+    "It only works in JavaScript files"
+  ]}
+  correct={1}
+  explanation="CSS Modules generate scoped class names so styles stay tied to the component file instead of leaking globally."
+/>
+
+<MarkDone slug="19-styling-in-react" track="react" />

@@ -1,0 +1,591 @@
+---
+title: "useContext"
+description: "Learn what context solves, how to create and provide it, when to use it, when not to use it, and how to avoid common context performance mistakes."
+level: "intermediate"
+minutes: 10
+stage: "Stage 4 — Intermediate"
+slug: "16-use-context"
+track: "react"
+---
+
+## Why this exists
+
+Props are the normal way to pass data in React, and most of the time they are the right solution. But as an app grows, some values need to be available many levels deep. A theme value may be needed in a button, card, modal, and navigation component. The current user may be needed in many distant branches. A language or locale setting may affect large parts of the app. Passing these values manually through every intermediate component quickly becomes painful.
+
+That pain is called prop drilling. The problem is not that props are bad. The problem is that some components end up receiving props only so they can pass them one level deeper, even though they do not use those values themselves. `useContext` exists to solve that problem by letting you share a value across a part of the tree without passing it through every layer by hand.
+
+Context is powerful, but it is also easy to misuse. It is not a replacement for all props and not a place to throw every changing value in your app. This topic matters because strong React codebases use context intentionally for the right kinds of shared values, not as a default for everything.
+
+## How it works
+
+Context is a React feature for sharing values across a tree without explicitly passing them through props at every level. You create a context object with `createContext`, provide a value with a `Provider`, and read that value in descendants with `useContext`.
+
+The best use cases for context are global or broadly shared values that change relatively infrequently:
+
+- theme
+- authenticated user
+- language
+- locale
+- feature flags
+- app-level configuration
+
+These values are shared widely, but they usually do not update dozens of times per second. That matters because every component that consumes a context re-renders whenever the context value changes.
+
+This is also why you should not use context for everything. High-frequency values like mouse position, rapidly changing animation state, or every keystroke for a large form can create unnecessary re-renders if pushed through one broad context. Context solves prop drilling, but it does not automatically solve performance.
+
+Creating context starts with `createContext(defaultValue)`. The default value is only used when there is no matching `Provider` above the component in the tree. This is important. The default value is not a fallback that mixes together with the provider value. It only applies when the consumer is outside the provider entirely.
+
+The `Provider` component wraps the part of the app that needs access. Any descendant inside that provider can read the current context value with `useContext`.
+
+In real projects, context is often combined with state. For example, a `ThemeProvider` may hold `theme` state and a `toggleTheme` function, then pass both through context so the rest of the app can read and change the current theme.
+
+A common best practice is to wrap `useContext` in a custom hook. Instead of calling `useContext(ThemeContext)` everywhere, create a `useTheme()` hook. This keeps the consuming code cleaner, centralizes the error handling, and hides the raw context object from the rest of the app.
+
+One important performance rule is that every consumer re-renders when the context value changes. If one context object contains many unrelated values, a change to one field can re-render components that only care about another field. You can reduce this problem by:
+
+- splitting context by concern
+- memoizing the provider value
+- keeping high-frequency values out of broad global contexts
+
+Multiple contexts are normal. A real app might have a `ThemeContext`, `UserContext`, and `LocaleContext`, each with its own provider. This is often better than one giant "AppContext" that stores everything.
+
+Context is best thought of as a tool for sharing values across a tree. Props are still the best choice for local, explicit parent-child data flow. Use props when the relationship is simple. Use context when prop drilling becomes painful and the data is broadly shared.
+
+## Syntax
+
+```tsx
+const ThemeContext = createContext('light')
+
+function ThemeLabel() {
+  const theme = useContext(ThemeContext)
+
+  return <p>{theme}</p>
+}
+```
+
+## Code examples
+
+### Example 1 — The prop drilling problem
+
+This is the pain context is designed to reduce.
+
+```tsx
+function App() {
+  const theme = 'dark'
+
+  return <Layout theme={theme} />
+}
+
+function Layout({ theme }: { theme: string }) {
+  return <Sidebar theme={theme} />
+}
+
+function Sidebar({ theme }: { theme: string }) {
+  return <Toolbar theme={theme} />
+}
+
+function Toolbar({ theme }: { theme: string }) {
+  return <ThemeButton theme={theme} />
+}
+
+function ThemeButton({ theme }: { theme: string }) {
+  return <button>Current theme: {theme}</button>
+}
+```
+
+`Layout`, `Sidebar`, and `Toolbar` do not need the theme for themselves. They only pass it along. That is prop drilling.
+
+### Example 2 — Creating a context with `createContext`
+
+The first step is to define a context object.
+
+```tsx
+import { createContext } from 'react'
+
+export const ThemeContext = createContext('light')
+```
+
+The string `'light'` is the default value, used only if no provider is above the consumer.
+
+### Example 3 — Providing context with a Provider
+
+The provider decides which part of the tree receives the value.
+
+```tsx
+import { ThemeContext } from './theme-context'
+
+export default function App() {
+  return (
+    <ThemeContext.Provider value="dark">
+      <Dashboard />
+    </ThemeContext.Provider>
+  )
+}
+```
+
+Any component inside `Dashboard` can now consume the theme.
+
+### Example 4 — Consuming context with `useContext`
+
+This is how a descendant reads the nearest provider value.
+
+```tsx
+import { useContext } from 'react'
+import { ThemeContext } from './theme-context'
+
+function ThemeLabel() {
+  const theme = useContext(ThemeContext)
+
+  return <p>Theme: {theme}</p>
+}
+```
+
+`useContext` returns the value from the closest provider above that component.
+
+### Example 5 — Default value without a Provider
+
+The default value only matters if no provider exists above the consumer.
+
+```tsx
+import { createContext, useContext } from 'react'
+
+const LanguageContext = createContext('en')
+
+function LanguageLabel() {
+  const language = useContext(LanguageContext)
+
+  return <p>Language: {language}</p>
+}
+
+export default function App() {
+  return <LanguageLabel />
+}
+```
+
+Because there is no provider, the consumer receives `'en'`.
+
+### Example 6 — Context with state: `ThemeContext` and toggle
+
+This is the most common real-world pattern.
+
+```tsx
+import {
+  createContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
+
+type Theme = 'light' | 'dark'
+
+type ThemeContextValue = {
+  theme: Theme
+  toggleTheme: () => void
+}
+
+export const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<Theme>('light')
+
+  function toggleTheme() {
+    setTheme((current) => (current === 'light' ? 'dark' : 'light'))
+  }
+
+  const value = useMemo(
+    () => ({
+      theme,
+      toggleTheme,
+    }),
+    [theme],
+  )
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+}
+```
+
+The provider owns the state and shares both the current value and the updater.
+
+### Example 7 — Custom hook wrapping `useContext`
+
+This is the clean consumption pattern.
+
+```tsx
+import { useContext } from 'react'
+import { ThemeContext } from './theme-context'
+
+export function useTheme() {
+  const context = useContext(ThemeContext)
+
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider')
+  }
+
+  return context
+}
+```
+
+Now components can call `useTheme()` instead of using the raw context directly.
+
+### Example 8 — Multiple contexts
+
+Separate concerns instead of building one giant context object.
+
+```tsx
+import { createContext, useContext } from 'react'
+
+const ThemeContext = createContext('light')
+const UserContext = createContext<{ name: string } | null>(null)
+
+function App() {
+  return (
+    <ThemeContext.Provider value="dark">
+      <UserContext.Provider value={{ name: 'Mahesh' }}>
+        <Dashboard />
+      </UserContext.Provider>
+    </ThemeContext.Provider>
+  )
+}
+
+function Dashboard() {
+  const theme = useContext(ThemeContext)
+  const user = useContext(UserContext)
+
+  return <p>{user?.name} is using {theme} mode.</p>
+}
+```
+
+This is usually cleaner than one provider holding unrelated concerns.
+
+### Example 9 — Context re-render problem
+
+Every consumer re-renders when the context value changes.
+
+```tsx
+import { createContext, useContext, useState } from 'react'
+
+const AppContext = createContext({
+  theme: 'light',
+  count: 0,
+})
+
+function CountDisplay() {
+  const context = useContext(AppContext)
+  console.log('CountDisplay rendered')
+
+  return <p>Count: {context.count}</p>
+}
+
+function ThemeDisplay() {
+  const context = useContext(AppContext)
+  console.log('ThemeDisplay rendered')
+
+  return <p>Theme: {context.theme}</p>
+}
+
+export default function App() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <AppContext.Provider value={{ theme: 'light', count }}>
+      <button onClick={() => setCount((value) => value + 1)}>Increment</button>
+      <CountDisplay />
+      <ThemeDisplay />
+    </AppContext.Provider>
+  )
+}
+```
+
+Even though `ThemeDisplay` only cares about the theme, it still re-renders when `count` changes because the context value changed.
+
+### Example 10 — Splitting context to reduce re-renders
+
+Separate context values by concern and update frequency.
+
+```tsx
+import { createContext, useContext, useState } from 'react'
+
+const ThemeContext = createContext('light')
+const CountContext = createContext(0)
+
+function ThemeDisplay() {
+  const theme = useContext(ThemeContext)
+  console.log('ThemeDisplay rendered')
+
+  return <p>Theme: {theme}</p>
+}
+
+function CountDisplay() {
+  const count = useContext(CountContext)
+  console.log('CountDisplay rendered')
+
+  return <p>Count: {count}</p>
+}
+
+export default function App() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <ThemeContext.Provider value="light">
+      <CountContext.Provider value={count}>
+        <button onClick={() => setCount((value) => value + 1)}>Increment</button>
+        <ThemeDisplay />
+        <CountDisplay />
+      </CountContext.Provider>
+    </ThemeContext.Provider>
+  )
+}
+```
+
+Now theme consumers are not forced to update when only count changes.
+
+### Example 11 — Context for auth
+
+Authentication is a classic context use case.
+
+```tsx
+import {
+  createContext,
+  useMemo,
+  useState,
+  useContext,
+  type ReactNode,
+} from 'react'
+
+type User = {
+  name: string
+}
+
+type AuthContextValue = {
+  user: User | null
+  login: (name: string) => void
+  logout: () => void
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+
+  function login(name: string) {
+    setUser({ name })
+  }
+
+  function logout() {
+    setUser(null)
+  }
+
+  const value = useMemo(
+    () => ({
+      user,
+      login,
+      logout,
+    }),
+    [user],
+  )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+function useAuth() {
+  const context = useContext(AuthContext)
+
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider')
+  }
+
+  return context
+}
+```
+
+This keeps user identity and auth actions available throughout the app.
+
+### Example 12 — Complete example: dark/light theme toggle with context
+
+This is the full pattern in one place.
+
+```tsx
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
+
+type Theme = 'light' | 'dark'
+
+type ThemeContextValue = {
+  theme: Theme
+  toggleTheme: () => void
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<Theme>('light')
+
+  function toggleTheme() {
+    setTheme((current) => (current === 'light' ? 'dark' : 'light'))
+  }
+
+  const value = useMemo(
+    () => ({
+      theme,
+      toggleTheme,
+    }),
+    [theme],
+  )
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+}
+
+function useTheme() {
+  const context = useContext(ThemeContext)
+
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider')
+  }
+
+  return context
+}
+
+function Toolbar() {
+  const { theme, toggleTheme } = useTheme()
+
+  return (
+    <button onClick={toggleTheme}>
+      Current theme: {theme}
+    </button>
+  )
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <Toolbar />
+    </ThemeProvider>
+  )
+}
+```
+
+This removes prop drilling and keeps the theme available wherever it is needed within the provider tree.
+
+<LivePreview id="use-context" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Putting high-frequency values like mouse position in a broad context.
+**Fix:** Keep fast-changing state local or use more specialized patterns.
+**Why:** Every consumer re-renders when the context value changes, which can hurt performance badly.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Creating one giant context for everything.
+**Fix:** Split contexts by concern and update frequency.
+**Why:** Separate contexts make ownership clearer and reduce unnecessary re-renders.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Calling `useContext(SomeContext)` everywhere directly.
+**Fix:** Wrap context access in a custom hook such as `useTheme()` or `useAuth()`.
+**Why:** The custom hook keeps consuming code clean and centralizes the provider safety check.
+</Callout>
+
+<Callout type="tip">
+Always create a custom hook for consuming context — `useTheme()` not `useContext(ThemeContext)`.
+</Callout>
+
+<Callout type="warning">
+Do not put everything in one context — split by concern and update frequency.
+</Callout>
+
+<Callout type="warning">
+Every component consuming a context re-renders when the context value changes.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is prop drilling and how does context solve it?
+**A:** Prop drilling happens when a value has to be passed through multiple intermediate components that do not use it themselves, only to reach a deeper descendant that needs it. Context solves this by letting descendants read a shared value directly from the nearest provider, so the intermediate layers no longer have to pass the prop manually.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the performance issue with context?
+**A:** Any component that consumes a context re-renders when that context value changes. If one large context contains many unrelated values or updates very often, you can trigger many unnecessary re-renders. The usual fix is to split contexts by concern, memoize provider values, and avoid using context for high-frequency updates.
+</Callout>
+
+## How this is used in real projects
+
+Context is common in production apps for theme, authentication, language, locale, and app-wide preferences. These are values many parts of the app need, but they usually change infrequently enough that context is a good fit.
+
+It is also common to combine context with local state inside a provider. A `ThemeProvider` may own a `theme` state and expose `toggleTheme`. An `AuthProvider` may hold the current user and expose `login` and `logout`. This pattern keeps the state logic in one place and gives the rest of the app a clean consumption API.
+
+At the same time, mature apps are careful not to overuse context. If everything goes into one global context, performance and maintainability both suffer. Good context usage is intentional: use it where prop drilling is genuinely painful and the shared value has a clear app-wide meaning.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What problem does `useContext` solve?
+**A:** `useContext` solves the problem of sharing values across a component tree without manually passing props through every intermediate level. It is especially helpful when the same value is needed many levels deep or across multiple branches of the tree.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is prop drilling?
+**A:** Prop drilling is the pattern where a prop is passed through several layers of components only so it can reach a deeper component that actually needs it. The intermediate components often do not use the prop themselves. Context can remove that repetitive passing when the value is broadly shared.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the re-render problem with context and how do you minimize it?
+**A:** The re-render problem is that every consumer re-renders when the context value changes. You minimize it by keeping context values focused, splitting unrelated values into separate contexts, memoizing provider values when appropriate, and avoiding context for very high-frequency state.
+</Callout>
+
+<Callout type="interview">
+**Q:** When should you NOT use context?
+**A:** You should not use context for everything, especially not for high-frequency updates or values that are only needed by one or two nearby components. In those cases, local state or props are often simpler and more efficient.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the pattern of wrapping `useContext` in a custom hook?
+**A:** The pattern is to create a small hook like `useTheme()` that calls `useContext(ThemeContext)` internally and throws a helpful error if the provider is missing. This makes consuming code cleaner and keeps the context usage consistent across the app.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="When does the default value of createContext get used?"
+  options={[
+    "When there is no Provider above in the tree",
+    "Whenever the Provider value is null",
+    "Whenever a component re-renders",
+    "Only during server rendering"
+  ]}
+  correct={0}
+  explanation="The default value is only used when a consumer has no matching provider above it in the React tree."
+/>
+
+<Quiz
+  question="What triggers a re-render in a context consumer?"
+  options={[
+    "Only prop changes",
+    "Any change to the context value",
+    "Only state changes inside the consumer",
+    "Only a full page refresh"
+  ]}
+  correct={1}
+  explanation="Any change to the value passed through the provider causes all consumers of that context to re-render."
+/>
+
+<Quiz
+  question="What is the best practice for consuming context?"
+  options={[
+    "Use the raw context in every component directly",
+    "Wrap it in a custom hook",
+    "Store it in localStorage first",
+    "Avoid providers entirely"
+  ]}
+  correct={1}
+  explanation="A custom hook like `useTheme()` makes context consumption cleaner, reusable, and safer."
+/>
+
+<MarkDone slug="16-use-context" track="react" />

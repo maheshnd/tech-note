@@ -1,0 +1,467 @@
+---
+title: "React Router"
+description: "Learn how client-side routing works in React, how React Router matches URLs to components, and how to build nested, protected, and parameterized routes."
+level: "intermediate"
+minutes: 12
+stage: "Stage 4 — Intermediate"
+slug: "20-react-router"
+track: "react"
+---
+
+## Why this exists
+
+Single page applications do not need a full browser page reload every time the user changes screens. A React app can update the URL, match that URL to a component tree, and render the next screen while keeping the app shell alive. That makes navigation feel faster and more app-like. But that behavior does not happen automatically. The app needs a routing system that knows which UI belongs to which URL.
+
+React Router exists to solve that problem. It gives React applications a way to map paths like `/`, `/users/42`, or `/settings/profile` to components. It also handles nested layouts, active links, programmatic navigation, route params, query params, protected routes, and not-found pages.
+
+This matters because navigation is one of the core jobs of any real app. Once an app has more than one page, routing becomes part of the architecture, not just a small detail.
+
+## How it works
+
+Client-side routing means the URL changes without a full page reload. Instead of requesting a brand new HTML document from the server on every navigation, the router reads the current path inside the browser and decides which React components should render for that path.
+
+React Router works by matching the URL to route definitions. A route definition usually includes a `path` and an `element`. When the current URL matches the path, React Router renders the element.
+
+There are two common setup styles in modern React Router:
+
+- `BrowserRouter` with `<Routes>` and `<Route>`
+- `RouterProvider` with a route configuration object
+
+Nested routes are especially important. A parent route can render shared layout UI like a sidebar, top navigation, or page shell, and an `Outlet` renders whichever child route matches underneath. That is how layout routes work: shared wrapper UI stays consistent while only the inner content changes.
+
+Route parameters let parts of the path become dynamic. For example, `/users/:id` can match `/users/42`, and `useParams()` lets the component read the `id`.
+
+Query parameters are the `?key=value` part of the URL, such as `?filter=active`. React Router provides `useSearchParams()` to read and update those values.
+
+Navigation inside a React Router app should use `<Link>` or `<NavLink>`, not a normal anchor tag. A normal `<a>` performs a full page reload. A `<Link>` changes the URL and lets React Router handle the route change on the client. `<NavLink>` does the same but also helps style the active route.
+
+`useNavigate()` is the programmatic navigation hook. It is useful when a route change should happen after some logic, such as after login or after submitting a form.
+
+`useLocation()` gives access to the current location object, including the current pathname. It is useful for reading the current route or responding to location changes.
+
+Protected routes are routes that redirect or block access when the user is not authenticated. A common pattern is to check auth state and render `<Navigate to="/login" replace />` when the user should not access the protected page.
+
+Lazy route loading uses `React.lazy()` and `Suspense` so route components are loaded only when needed. This helps reduce initial bundle size.
+
+Modern React Router also supports data APIs such as loaders in v6.4+, which let routes fetch data as part of the routing layer instead of leaving everything to manual `useEffect` calls.
+
+## Syntax
+
+```tsx
+<Route path="/users/:id" element={<UserPage />} />
+```
+
+## Code examples
+
+### Example 1 — Basic router setup
+
+This is the classic setup with `BrowserRouter`.
+
+```tsx
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import App from './App'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>,
+)
+```
+
+This tells React Router to manage navigation using the browser history API.
+
+### Example 2 — Defining routes
+
+Routes map paths to UI.
+
+```tsx
+import { Route, Routes } from 'react-router-dom'
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+    </Routes>
+  )
+}
+```
+
+### Example 3 — `Link` for navigation
+
+Use `<Link>` for normal app navigation.
+
+```tsx
+import { Link } from 'react-router-dom'
+
+function Nav() {
+  return (
+    <nav>
+      <Link to="/">Home</Link>
+      <Link to="/about">About</Link>
+    </nav>
+  )
+}
+```
+
+### Example 4 — `NavLink` with active styling
+
+`NavLink` is useful when the current route should look active.
+
+```tsx
+import { NavLink } from 'react-router-dom'
+
+function Nav() {
+  return (
+    <nav>
+      <NavLink
+        to="/dashboard"
+        className={({ isActive }) => (isActive ? 'active-link' : 'link')}
+      >
+        Dashboard
+      </NavLink>
+    </nav>
+  )
+}
+```
+
+### Example 5 — Nested routes with `Outlet`
+
+Layout routes keep shared UI in one place.
+
+```tsx
+import { Outlet, Route, Routes } from 'react-router-dom'
+
+function DashboardLayout() {
+  return (
+    <section>
+      <aside>Sidebar</aside>
+      <main>
+        <Outlet />
+      </main>
+    </section>
+  )
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/dashboard" element={<DashboardLayout />}>
+        <Route index element={<OverviewPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
+    </Routes>
+  )
+}
+```
+
+### Example 6 — Route params with `useParams`
+
+Dynamic paths are common for detail pages.
+
+```tsx
+import { useParams } from 'react-router-dom'
+
+function UserPage() {
+  const { id } = useParams()
+
+  return <p>User ID: {id}</p>
+}
+```
+
+If the URL is `/users/42`, `id` is `"42"`.
+
+### Example 7 — Query params with `useSearchParams`
+
+Filters and sorting often belong in the query string.
+
+```tsx
+import { useSearchParams } from 'react-router-dom'
+
+function TasksPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filter = searchParams.get('filter') ?? 'all'
+
+  return (
+    <section>
+      <p>Current filter: {filter}</p>
+      <button onClick={() => setSearchParams({ filter: 'active' })}>
+        Show active
+      </button>
+    </section>
+  )
+}
+```
+
+### Example 8 — `useNavigate` for programmatic navigation
+
+Sometimes navigation happens after logic, not from clicking a link directly.
+
+```tsx
+import { useNavigate } from 'react-router-dom'
+
+function LoginForm() {
+  const navigate = useNavigate()
+
+  function handleSubmit() {
+    // Login logic here
+    navigate('/dashboard')
+  }
+
+  return <button onClick={handleSubmit}>Login</button>
+}
+```
+
+### Example 9 — `useLocation`
+
+This hook lets a component inspect the current route.
+
+```tsx
+import { useLocation } from 'react-router-dom'
+
+function RouteDebug() {
+  const location = useLocation()
+
+  return <p>Current path: {location.pathname}</p>
+}
+```
+
+### Example 10 — 404 page with a catch-all route
+
+Every routed app should handle unknown URLs.
+
+```tsx
+import { Route, Routes } from 'react-router-dom'
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  )
+}
+```
+
+### Example 11 — Protected route
+
+Protected routes redirect users who are not allowed in.
+
+```tsx
+import { Navigate } from 'react-router-dom'
+
+function ProtectedRoute({
+  isAuthed,
+  children,
+}: {
+  isAuthed: boolean
+  children: React.ReactNode
+}) {
+  if (!isAuthed) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
+```
+
+This wrapper can sit around any protected page.
+
+### Example 12 — Lazy route loading
+
+Route-level code splitting keeps the initial bundle smaller.
+
+```tsx
+import { lazy, Suspense } from 'react'
+import { Route, Routes } from 'react-router-dom'
+
+const ReportsPage = lazy(() => import('./ReportsPage'))
+
+function App() {
+  return (
+    <Suspense fallback={<p>Loading route...</p>}>
+      <Routes>
+        <Route path="/reports" element={<ReportsPage />} />
+      </Routes>
+    </Suspense>
+  )
+}
+```
+
+### Example 13 — Complete example: multi-page app
+
+This combines navigation, nested routes, params, and protection.
+
+```tsx
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  Route,
+  Routes,
+  useParams,
+} from 'react-router-dom'
+
+function Layout() {
+  return (
+    <section>
+      <nav>
+        <NavLink to="/">Home</NavLink>
+        <NavLink to="/dashboard">Dashboard</NavLink>
+      </nav>
+      <Outlet />
+    </section>
+  )
+}
+
+function UserDetail() {
+  const { id } = useParams()
+  return <p>User detail for {id}</p>
+}
+
+function ProtectedRoute({
+  isAuthed,
+  children,
+}: {
+  isAuthed: boolean
+  children: React.ReactNode
+}) {
+  return isAuthed ? <>{children}</> : <Navigate to="/" replace />
+}
+
+export default function App() {
+  const isAuthed = true
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<p>Home page</p>} />
+          <Route
+            path="dashboard"
+            element={
+              <ProtectedRoute isAuthed={isAuthed}>
+                <p>Protected dashboard</p>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="users/:id" element={<UserDetail />} />
+          <Route path="*" element={<p>404 page</p>} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  )
+}
+```
+
+<LivePreview id="react-router" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Using `<a>` tags for internal app navigation.
+**Fix:** Use `<Link>` or `<NavLink>` inside a React Router app.
+**Why:** A normal anchor tag causes a full page reload, which defeats client-side routing.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting a catch-all route.
+**Fix:** Add a `path="*"` route for not-found UI.
+**Why:** Unknown paths should fail gracefully instead of leaving the app blank or confusing.
+</Callout>
+
+<Callout type="tip">
+Use `NavLink` instead of `Link` when you need to style the active route.
+</Callout>
+
+<Callout type="tip">
+Use `useNavigate` for redirect after form submit or after login.
+</Callout>
+
+<Callout type="warning">
+Always use `<Link>` not `<a>` inside a React Router app — `<a>` causes a full page reload.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is client-side routing?
+**A:** Client-side routing is navigation that changes the URL and rendered component tree in the browser without requesting a full new HTML page from the server. React Router implements this by matching the current location to route definitions and rendering the correct components on the client.
+</Callout>
+
+## How this is used in real projects
+
+Routing shapes the structure of large React apps. A dashboard area may use a layout route with shared navigation and nested child routes. Detail pages often use route params. Filters and search states often live in query parameters. Login flows often redirect with programmatic navigation after authentication succeeds.
+
+Protected routes are also a common production need. Internal tools, settings screens, billing pages, and admin areas usually need route-level access control. Lazy route loading becomes more valuable as the app grows because it reduces how much code the user downloads up front.
+
+This is why routing is more than just "switch pages." It is how navigation, layout, deep linking, URL state, and access control all come together in a React application.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is client-side routing and how does React Router implement it?
+**A:** Client-side routing means changing views in the browser without a full page reload. React Router implements it by listening to URL changes, matching the current path to route definitions, and rendering the corresponding component tree on the client.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `Link` and a regular anchor tag?
+**A:** A regular anchor tag performs a full page navigation through the browser. A React Router `Link` updates the URL and lets the router handle navigation on the client, which preserves the single-page app experience.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you create a protected route in React Router?
+**A:** A common approach is to wrap protected content in a component that checks auth state. If the user is allowed, render the children. If not, render `<Navigate to="/login" replace />` to redirect them away.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are nested routes and layout routes?
+**A:** Nested routes allow child routes to render inside a parent route. Layout routes are parent routes that render shared UI such as nav bars or sidebars and use `Outlet` to display the matching child route content inside that shared layout.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you read URL parameters?
+**A:** Use `useParams()` from React Router. For a route like `/users/:id`, the `id` value is available from the object returned by `useParams()`.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What hook do you use to read URL params like /users/:id?"
+  options={[
+    "useNavigate",
+    "useLocation",
+    "useParams",
+    "useSearchParams"
+  ]}
+  correct={2}
+  explanation="`useParams()` reads dynamic path segments such as `:id` from the currently matched route."
+/>
+
+<Quiz
+  question="What is the difference between Link and NavLink?"
+  options={[
+    "They are identical in every way",
+    "NavLink adds active route awareness for styling",
+    "Link only works on mobile",
+    "NavLink always redirects to the home page"
+  ]}
+  correct={1}
+  explanation="`NavLink` behaves like `Link` but also knows whether its route is currently active, which is useful for navigation styling."
+/>
+
+<Quiz
+  question="How do you programmatically navigate?"
+  options={[
+    "useRoute",
+    "useNavigate",
+    "useParams",
+    "useLoader"
+  ]}
+  correct={1}
+  explanation="`useNavigate()` returns a function that lets your code navigate after logic like login, save, or submit flows."
+/>
+
+<MarkDone slug="20-react-router" track="react" />

@@ -1,0 +1,874 @@
+---
+title: "State with useState"
+description: "Learn what state is, why regular variables do not work for UI memory, and how to use useState correctly for primitives, arrays, objects, forms, and shared state."
+level: "beginner"
+minutes: 12
+stage: "Stage 2 — Core React"
+slug: "07-use-state"
+track: "react"
+---
+
+## Why this exists
+
+If you write `let count = 0` inside a React component and then change it, React does not automatically know that the screen should update. That is because a regular variable is just normal JavaScript data inside one render. When React renders the component again, that variable is recreated from scratch. So regular variables do not work as UI memory.
+
+State solves that problem. State is memory React keeps for a component between renders. When you update state with the setter function, React knows the component should render again with the new value. That is why `useState` is one of the most important APIs in all of React.
+
+## How it works
+
+`useState` is a React hook that gives a component a piece of persistent memory. It returns an array with two items: the current state value and a setter function. The current value is the snapshot for this render. The setter tells React to store a new value and schedule a re-render.
+
+One of the most important ideas is that state is a snapshot. Inside a render, the state value does not change halfway through. If you call the setter, React schedules a future render with the updated value. That is why reading state immediately after setting it often surprises beginners. The render you are in still sees the old snapshot.
+
+React also batches state updates inside the same event handler. If you call several setters in one click handler, React usually groups them into one render for efficiency. This is good for performance, but it also means you must understand when to use the functional update form like `setCount((prev) => prev + 1)`. That form is necessary when the next value depends on the previous value.
+
+State should be treated as immutable. If your state is an array or object, you should not change it in place with methods like `push()` or assignments like `user.name = 'x'`. Instead, create a new array or object and return that. React relies on identity changes to understand that state has changed.
+
+You also want to keep state minimal. If a value can be computed from existing state during render, you usually should not store it separately. That kind of redundant state is called derived state, and storing it often creates bugs when one piece updates but the other does not.
+
+`useState` works with primitive values like strings, numbers, and booleans, but it also works with arrays and objects. The main rule is always the same: return a new value, not a mutated old value. As components grow, you will also decide whether to keep several small pieces of state or one larger object. A good rule is to keep related values together when they change together, and keep separate values separate when they are independent.
+
+State should also live as close as possible to where it is used. This is called state colocation. If only one component needs a value, keep the state there. If two sibling components need the same value, lift the state up to their parent and pass it down. This keeps the data flow easier to understand.
+
+## Syntax
+
+```tsx
+const [value, setValue] = useState(initialValue)
+```
+
+## Code examples
+
+### Example 1 — Counter: the simplest `useState` example
+
+The smallest useful `useState` example is a counter.
+
+```tsx
+import { useState } from 'react'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      Count: {count}
+    </button>
+  )
+}
+```
+
+This shows the core pattern: read the state value, display it, and update it with the setter.
+
+### Example 2 — String state
+
+State often holds simple text values such as names, search queries, or labels.
+
+```tsx
+import { useState } from 'react'
+
+export default function WelcomeMessage() {
+  const [name, setName] = useState('Mahesh')
+
+  return (
+    <section>
+      <p>Hello, {name}</p>
+      <button onClick={() => setName('React learner')}>Rename</button>
+    </section>
+  )
+}
+```
+
+Strings are a very common kind of state because many inputs and labels depend on text.
+
+### Example 3 — Boolean state
+
+Booleans are useful for toggles such as open/closed, loading/not loading, or visible/hidden.
+
+```tsx
+import { useState } from 'react'
+
+export default function ToggleDetails() {
+  const [showDetails, setShowDetails] = useState(false)
+
+  return (
+    <section>
+      <button onClick={() => setShowDetails((value) => !value)}>
+        {showDetails ? 'Hide' : 'Show'} details
+      </button>
+      {showDetails ? <p>Extra information is visible now.</p> : null}
+    </section>
+  )
+}
+```
+
+The boolean decides which UI branch should appear.
+
+### Example 4 — Functional update form
+
+If the next state depends on the previous state, use the functional form.
+
+```tsx
+import { useState } from 'react'
+
+export default function SafeCounter() {
+  const [count, setCount] = useState(0)
+
+  function increment() {
+    setCount((previousCount) => previousCount + 1)
+  }
+
+  return <button onClick={increment}>Count: {count}</button>
+}
+```
+
+This is safer than `setCount(count + 1)` when the next value is based on the previous one.
+
+### Example 5 — State batching
+
+React batches state updates in the same event handler.
+
+```tsx
+import { useState } from 'react'
+
+export default function BatchedCounter() {
+  const [count, setCount] = useState(0)
+
+  function addThreeWrongWay() {
+    setCount(count + 1)
+    setCount(count + 1)
+    setCount(count + 1)
+  }
+
+  function addThreeRightWay() {
+    setCount((value) => value + 1)
+    setCount((value) => value + 1)
+    setCount((value) => value + 1)
+  }
+
+  return (
+    <section>
+      <p>{count}</p>
+      <button onClick={addThreeWrongWay}>Wrong +3</button>
+      <button onClick={addThreeRightWay}>Right +3</button>
+    </section>
+  )
+}
+```
+
+The stale `count + 1` version usually increments only once. The functional version increments three times because each update receives the latest value.
+
+### Example 6 — Array state: add an item
+
+When adding to an array in state, create a new array.
+
+```tsx
+import { useState } from 'react'
+
+export default function AddTodo() {
+  const [todos, setTodos] = useState(['Read docs'])
+
+  function addTodo() {
+    setTodos((items) => [...items, 'Build example'])
+  }
+
+  return (
+    <section>
+      <button onClick={addTodo}>Add todo</button>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo}>{todo}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+The spread operator creates a new array, which is what React expects.
+
+### Example 7 — Array state: remove an item
+
+Removing from array state is usually a `filter()` operation.
+
+```tsx
+import { useState } from 'react'
+
+export default function RemoveTodo() {
+  const [todos, setTodos] = useState(['Read docs', 'Write notes'])
+
+  function removeTodo(todoToRemove: string) {
+    setTodos((items) => items.filter((item) => item !== todoToRemove))
+  }
+
+  return (
+    <ul>
+      {todos.map((todo) => (
+        <li key={todo}>
+          {todo}
+          <button onClick={() => removeTodo(todo)}>Remove</button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+`filter()` returns a new array without mutating the original one.
+
+### Example 8 — Array state: update an item
+
+Updating one item in an array usually means mapping over the array and replacing the matching item.
+
+```tsx
+import { useState } from 'react'
+
+type Todo = {
+  id: number
+  text: string
+  done: boolean
+}
+
+export default function UpdateTodo() {
+  const [todos, setTodos] = useState<Todo[]>([
+    { id: 1, text: 'Read docs', done: false },
+    { id: 2, text: 'Try demo', done: false },
+  ])
+
+  function toggleTodo(id: number) {
+    setTodos((items) =>
+      items.map((item) =>
+        item.id === id ? { ...item, done: !item.done } : item,
+      ),
+    )
+  }
+
+  return (
+    <ul>
+      {todos.map((todo) => (
+        <li key={todo.id}>
+          <button onClick={() => toggleTodo(todo.id)}>
+            {todo.done ? 'Done' : 'Pending'} - {todo.text}
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+This preserves every item except the one you want to update.
+
+### Example 9 — Object state: updating one field
+
+For object state, spread the old object and overwrite the field you want to change.
+
+```tsx
+import { useState } from 'react'
+
+export default function ProfileCard() {
+  const [user, setUser] = useState({
+    name: 'Mahesh',
+    role: 'Frontend engineer',
+  })
+
+  function rename() {
+    setUser((currentUser) => ({
+      ...currentUser,
+      name: 'React learner',
+    }))
+  }
+
+  return (
+    <section>
+      <p>{user.name}</p>
+      <p>{user.role}</p>
+      <button onClick={rename}>Rename</button>
+    </section>
+  )
+}
+```
+
+You do not replace only the field. You create a new object containing the old fields plus the changed one.
+
+### Example 10 — Nested object update
+
+Nested state can be updated, but deep nesting makes updates harder to read.
+
+```tsx
+import { useState } from 'react'
+
+export default function NestedState() {
+  const [settings, setSettings] = useState({
+    theme: {
+      mode: 'light',
+      contrast: 'normal',
+    },
+  })
+
+  function enableDarkMode() {
+    setSettings((currentSettings) => ({
+      ...currentSettings,
+      theme: {
+        ...currentSettings.theme,
+        mode: 'dark',
+      },
+    }))
+  }
+
+  return <button onClick={enableDarkMode}>{settings.theme.mode}</button>
+}
+```
+
+This works, but it also shows why flatter state shapes are often easier to manage.
+
+### Example 11 — Multiple independent state values
+
+Sometimes several independent values deserve separate state calls.
+
+```tsx
+import { useState } from 'react'
+
+export default function MultiStateExample() {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [subscribed, setSubscribed] = useState(false)
+
+  return (
+    <section>
+      <input value={name} onChange={(event) => setName(event.target.value)} />
+      <input value={email} onChange={(event) => setEmail(event.target.value)} />
+      <label>
+        <input
+          type="checkbox"
+          checked={subscribed}
+          onChange={(event) => setSubscribed(event.target.checked)}
+        />
+        Subscribe
+      </label>
+    </section>
+  )
+}
+```
+
+Separate state values are often clearer when the values change independently.
+
+### Example 12 — When to use one object vs multiple state values
+
+If several fields belong to the same form, one object can be a good fit.
+
+```tsx
+import { useState } from 'react'
+
+type LoginForm = {
+  email: string
+  password: string
+}
+
+export default function LoginStateShape() {
+  const [form, setForm] = useState<LoginForm>({
+    email: '',
+    password: '',
+  })
+
+  function updateField(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  return (
+    <section>
+      <input name="email" value={form.email} onChange={updateField} />
+      <input name="password" value={form.password} onChange={updateField} />
+    </section>
+  )
+}
+```
+
+If the values belong together and update in a shared way, one object can be simpler. If they are unrelated, separate state values may be easier.
+
+### Example 13 — Controlled text input
+
+Controlled inputs are one of the most common `useState` patterns in React.
+
+```tsx
+import { useState } from 'react'
+
+export default function NameInput() {
+  const [name, setName] = useState('')
+
+  return (
+    <section>
+      <input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder="Type your name"
+      />
+      <p>Hello, {name || 'friend'}.</p>
+    </section>
+  )
+}
+```
+
+The input value is always driven by React state, which keeps the UI and the data in sync.
+
+### Example 14 — Controlled select dropdown
+
+`useState` also works naturally with select elements.
+
+```tsx
+import { useState } from 'react'
+
+export default function PlanPicker() {
+  const [plan, setPlan] = useState('basic')
+
+  return (
+    <section>
+      <select value={plan} onChange={(event) => setPlan(event.target.value)}>
+        <option value="basic">Basic</option>
+        <option value="pro">Pro</option>
+        <option value="enterprise">Enterprise</option>
+      </select>
+      <p>Selected plan: {plan}</p>
+    </section>
+  )
+}
+```
+
+The selected value lives in state, not just in the DOM.
+
+### Example 15 — Controlled checkbox
+
+Checkboxes usually use `checked` instead of `value`.
+
+```tsx
+import { useState } from 'react'
+
+export default function TermsCheckbox() {
+  const [accepted, setAccepted] = useState(false)
+
+  return (
+    <label>
+      <input
+        type="checkbox"
+        checked={accepted}
+        onChange={(event) => setAccepted(event.target.checked)}
+      />
+      Accept terms
+    </label>
+  )
+}
+```
+
+For checkboxes, the real state is whether they are checked, so you read `event.target.checked`.
+
+### Example 16 — Derived state
+
+If a value can be computed from existing state, compute it instead of storing it separately.
+
+```tsx
+import { useState } from 'react'
+
+type Todo = {
+  id: number
+  text: string
+  done: boolean
+}
+
+export default function FilteredTodos() {
+  const [todos] = useState<Todo[]>([
+    { id: 1, text: 'Read docs', done: true },
+    { id: 2, text: 'Build feature', done: false },
+    { id: 3, text: 'Ship update', done: true },
+  ])
+
+  const completedTodos = todos.filter((todo) => todo.done)
+
+  return (
+    <ul>
+      {completedTodos.map((todo) => (
+        <li key={todo.id}>{todo.text}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+`completedTodos` is derived from `todos`, so it does not need its own state.
+
+### Example 17 — Expensive initial state with lazy initialization
+
+If creating the initial value is expensive, pass a function to `useState`.
+
+```tsx
+import { useState } from 'react'
+
+function buildLargeList() {
+  console.log('Running expensive initialization')
+  return Array.from({ length: 5000 }, (_, index) => `Item ${index + 1}`)
+}
+
+export default function ExpensiveInitExample() {
+  const [items] = useState(() => buildLargeList())
+
+  return <p>Total items: {items.length}</p>
+}
+```
+
+The initializer function runs only for the initial state setup, not on every render.
+
+### Example 18 — Lifting state up
+
+When two sibling components need the same state, move it to their parent.
+
+```tsx
+import { useState } from 'react'
+
+function SearchBox({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (nextValue: string) => void
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder="Search"
+    />
+  )
+}
+
+function Results({ query }: { query: string }) {
+  return <p>Showing results for: {query || 'all items'}</p>
+}
+
+export default function SearchPage() {
+  const [query, setQuery] = useState('')
+
+  return (
+    <section>
+      <SearchBox value={query} onChange={setQuery} />
+      <Results query={query} />
+    </section>
+  )
+}
+```
+
+The parent owns the shared state, and both siblings receive what they need through props.
+
+### Example 19 — A full mini feature: todo app
+
+This example uses add, complete, and delete patterns together.
+
+```tsx
+import { useState } from 'react'
+
+type Todo = {
+  id: number
+  text: string
+  done: boolean
+}
+
+export default function TodoApp() {
+  const [todos, setTodos] = useState<Todo[]>([])
+  const [draft, setDraft] = useState('')
+
+  function addTodo() {
+    const value = draft.trim()
+
+    if (!value) return
+
+    setTodos((items) => [
+      ...items,
+      { id: Date.now(), text: value, done: false },
+    ])
+    setDraft('')
+  }
+
+  function toggleTodo(id: number) {
+    setTodos((items) =>
+      items.map((item) =>
+        item.id === id ? { ...item, done: !item.done } : item,
+      ),
+    )
+  }
+
+  function deleteTodo(id: number) {
+    setTodos((items) => items.filter((item) => item.id !== id))
+  }
+
+  return (
+    <section>
+      <div>
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Add a todo"
+        />
+        <button onClick={addTodo}>Add</button>
+      </div>
+
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            <button onClick={() => toggleTodo(todo.id)}>
+              {todo.done ? 'Undo' : 'Complete'}
+            </button>
+            <span>{todo.text}</span>
+            <button onClick={() => deleteTodo(todo.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+This combines controlled input state, array add, array update, and array remove in one feature.
+
+### Example 20 — A full form
+
+This example shows a realistic multi-field form with one object in state.
+
+```tsx
+import { useState } from 'react'
+
+type ContactForm = {
+  name: string
+  email: string
+  role: string
+  newsletter: boolean
+}
+
+const initialForm: ContactForm = {
+  name: '',
+  email: '',
+  role: 'developer',
+  newsletter: false,
+}
+
+export default function ContactFormExample() {
+  const [form, setForm] = useState<ContactForm>(initialForm)
+
+  function handleChange(
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) {
+    const { name, type } = event.target
+
+    const value =
+      type === 'checkbox'
+        ? (event.target as HTMLInputElement).checked
+        : event.target.value
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    console.log('Submitted form', form)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        name="name"
+        value={form.name}
+        onChange={handleChange}
+        placeholder="Name"
+      />
+
+      <input
+        name="email"
+        value={form.email}
+        onChange={handleChange}
+        placeholder="Email"
+      />
+
+      <select name="role" value={form.role} onChange={handleChange}>
+        <option value="developer">Developer</option>
+        <option value="designer">Designer</option>
+        <option value="manager">Manager</option>
+      </select>
+
+      <label>
+        <input
+          type="checkbox"
+          name="newsletter"
+          checked={form.newsletter}
+          onChange={handleChange}
+        />
+        Join newsletter
+      </label>
+
+      <button type="submit">Submit</button>
+    </form>
+  )
+}
+```
+
+This is a realistic example of multiple related form fields in one state object with one submit handler.
+
+<LivePreview id="counter-basic" />
+
+<LivePreview id="toggle-panel" />
+
+<LivePreview id="controlled-input" />
+
+<LivePreview id="timer-basic" />
+
+<LivePreview id="todo-list" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Mutating state directly with things like `items.push(...)` or `user.name = 'x'`.
+**Fix:** Always create a new array or object when updating state.
+**Why:** React does not reliably detect in-place mutations because the object identity did not change the way React expects.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Reading state immediately after setting it and expecting the new value inside the same render.
+**Fix:** Remember that state is a snapshot for the current render.
+**Why:** Calling the setter schedules a future render. It does not rewrite the value mid-render.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Calling `setCount(count + 1)` three times in one handler and expecting `+3`.
+**Fix:** Use the functional update form when the next state depends on previous state.
+**Why:** React batches updates, and each stale `count + 1` call sees the same old snapshot.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Storing derived data in state when it can be computed from existing state.
+**Fix:** Compute derived values during render.
+**Why:** Redundant state easily gets out of sync and creates unnecessary bugs.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Putting everything into one giant state object by default.
+**Fix:** Group related values together, but keep unrelated values separate.
+**Why:** Huge state objects are harder to update and easier to accidentally break.
+</Callout>
+
+<Callout type="tip">
+Use the functional update form `prev => ...` whenever the next state depends on the previous state value. It avoids stale-snapshot bugs.
+</Callout>
+
+<Callout type="tip">
+Treat state as immutable. For arrays and objects, always return new values instead of mutating old ones.
+</Callout>
+
+<Callout type="tip">
+Keep state minimal. Only store what you cannot compute from existing props and state.
+</Callout>
+
+<Callout type="warning">
+Never mutate arrays or objects in state. Methods like `push()`, `pop()`, direct property assignment, and in-place sorting often lead to confusing React bugs.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between state and a regular variable?
+**A:** A regular variable inside a component does not persist the way UI memory needs to persist across renders. React recreates the component function on each render, so ordinary local variables do not automatically survive in the right way or trigger updates. State is special memory managed by React. When you update state with the setter, React knows to re-render the component.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why does React batch state updates?
+**A:** React batches state updates to reduce unnecessary renders and make updates more efficient. If several state changes happen inside the same event, React can process them together instead of rendering after each one. This improves performance and keeps UI updates smoother. It also means developers need to understand when the functional update form is necessary.
+</Callout>
+
+## How this is used in real projects
+
+In real applications, state is what makes screens respond to user actions and changing data. A dashboard may store search text, selected filters, whether a drawer is open, whether a request is loading, and the current tab. A claims form may store field values, validation errors, and submit status. A policy list may store selected row IDs, sort order, and pagination state. All of that is component or page-level state.
+
+Good state design matters because poor state design creates bugs fast. If you store redundant values, parts of the screen drift out of sync. If you mutate arrays directly, updates may not render correctly. If you lift state too high, too many components become coupled. If you keep shared state too low, siblings cannot coordinate. Real frontend work is not just "using `useState`." It is deciding what should be state, where it should live, and how it should be updated safely.
+
+Teams also spend a lot of time simplifying state. A well-designed screen stores only the minimum information necessary and derives the rest. That makes components easier to debug, easier to test, and easier to change when product requirements evolve.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is state in React and why do we need it?
+**A:** State is component memory managed by React that persists between renders. We need it because user interfaces change over time based on user actions, async data, toggles, form inputs, and many other interactions. Regular variables do not tell React when the UI should update. State solves that by giving React a tracked value and a setter that triggers re-rendering.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between state and a regular variable?
+**A:** A regular variable inside a component is just ordinary JavaScript and does not automatically trigger re-rendering when it changes. It also does not behave like persistent UI memory across renders in the way React state does. State is managed by React and survives from one render to the next. Updating state tells React to render the component again with the new value.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is state batching and why does React do it?
+**A:** State batching means React groups multiple state updates together and processes them in one render cycle when possible. This reduces extra renders and improves performance. It also keeps the UI from updating in a fragmented way during one event. The tradeoff is that developers need to understand that setters do not update the current render snapshot immediately.
+</Callout>
+
+<Callout type="interview">
+**Q:** When should you use the functional update form `prev => ...`?
+**A:** You should use the functional update form whenever the next state depends on the previous state value. Common examples include counters, toggles, queue-like updates, and any case where multiple updates may happen in one event. The function receives the latest available previous value, which avoids stale snapshot bugs. It is the safest pattern when the new value is based on the old one.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you correctly update an array in state?
+**A:** You update an array in state by returning a new array rather than mutating the old one. Common patterns are spread syntax to add items, `filter()` to remove items, and `map()` to update one item. This matters because React expects immutable updates so it can detect that the value changed. Mutating the original array in place often leads to broken or confusing UI behavior.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you correctly update an object in state?
+**A:** The normal pattern is to return a new object using spread syntax, such as `{ ...user, name: 'New name' }`. This copies the old object and replaces only the field that changed. For nested objects, you also spread each nested level you are updating. The key rule is to avoid mutating the original object directly.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is derived state and why should you prefer it over storing redundant state?
+**A:** Derived state is a value you can compute from existing props or state during render, such as filtered lists, totals, or counts. You should prefer computing it instead of storing it separately because redundant stored values can get out of sync. Fewer stored values mean fewer update paths and fewer bugs. If React can calculate it from existing state, it usually should not be its own state variable.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does lifting state up mean?
+**A:** Lifting state up means moving a piece of state to the closest common parent of the components that need it. This creates a single source of truth that the parent can pass down to its children as props. It is the standard way siblings share data in React. You lift state when multiple components need to read or update the same value.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which of these correctly adds an item to an array in state?"
+  options={[
+    "items.push(newItem)",
+    "[...items, newItem]",
+    "items = newItem",
+    "items.add(newItem)"
+  ]}
+  correct={1}
+  explanation="`[...items, newItem]` creates a brand new array with the existing items plus the new one. That is the immutable update pattern React expects."
+/>
+
+<Quiz
+  question="What is wrong with doing `state.push(item)`?"
+  options={[
+    "It is too slow",
+    "It mutates state directly",
+    "It only works in TypeScript",
+    "It deletes old items"
+  ]}
+  correct={1}
+  explanation="`push()` mutates the existing array in place. React state should be updated by returning a new array instead of mutating the old one."
+/>
+
+<Quiz
+  question="When should you use `setCount((prev) => prev + 1)`?"
+  options={[
+    "Only inside reducers",
+    "Only on the server",
+    "When the next state depends on the previous state",
+    "Never, because it is slower"
+  ]}
+  correct={2}
+  explanation="The functional form is the correct choice when the next value depends on the previous one, especially when updates may be batched."
+/>
+
+<MarkDone slug="07-use-state" track="react" />

@@ -1,0 +1,358 @@
+---
+title: "React internals awareness"
+description: "Learn the React internals that matter in real development: Fiber basics, hook ordering, render versus commit, Strict Mode double invocation, and why consistent hooks are non-negotiable."
+level: "advanced"
+minutes: 12
+stage: "Stage 6 — Advanced"
+slug: "38-react-internals"
+track: "react"
+---
+
+## Why this exists
+
+You do not need to memorize React’s source code to build good applications. But at a certain level, React starts making much more sense when you understand some of the internals behind its behavior. Why do hooks have strict rules? Why does Strict Mode seem to render things twice in development? Why do effects run after render instead of during it? Why does React talk about “render” and “commit” as separate phases?
+
+This topic exists because those questions are not trivia. They explain many of the bugs and warnings developers hit in real work. Once you understand the internals at a practical level, you stop fighting React and start writing code that fits its model.
+
+The goal here is not to become a React core contributor. The goal is to build the kind of internal awareness that helps you debug better, structure hooks correctly, and make sense of React’s rules without treating them as random restrictions.
+
+## How it works
+
+One of the most important internal ideas is that React separates work into phases.
+
+- render phase: React figures out what the UI should look like
+- commit phase: React applies the necessary changes to the real DOM
+
+That distinction explains why you should not perform side effects during rendering. Rendering is supposed to stay pure. Effects such as DOM subscriptions, timers, and network connections belong after commit, which is why `useEffect` runs later.
+
+Fiber is React’s internal architecture for representing and updating the component tree. You do not need to know its implementation details, but the high-level idea matters: React can break UI work into units, track updates more flexibly, and decide how to process changes efficiently. Fiber helps make features like prioritization, interruptible rendering, and modern concurrent behavior possible.
+
+Hook ordering is another major internal rule. React does not identify hooks by variable name. It identifies them by call order during rendering. That is why hooks must always run in the same order on every render. If a hook is skipped conditionally, React can no longer match the right state slot to the right hook call.
+
+This is the real reason behind the “Rules of Hooks”:
+
+- call hooks only at the top level
+- call hooks only from React components or custom hooks
+
+Those rules are not style preferences. They are how React keeps hook state aligned correctly.
+
+Strict Mode double invocation in development is another common source of confusion. In development, React may intentionally run certain render and effect paths more than once to help reveal unsafe side effects and cleanup mistakes. This does not mean production will literally render the same way twice. It means React is stress-testing your code for purity and correct cleanup behavior.
+
+This becomes especially visible with effects. If an effect opens a connection but does not clean it up correctly, Strict Mode often reveals that quickly. That is one reason it is useful, even when it feels annoying at first.
+
+Another helpful internal distinction is render versus rerender. A rerender is not automatically a full DOM rebuild. React reruns the component functions to compute the next tree, compares results, and commits only the necessary changes.
+
+The practical takeaway is simple:
+
+- keep renders pure
+- keep hook order stable
+- use effects for real side effects
+- expect Strict Mode to surface unsafe assumptions in development
+
+## Syntax
+
+```tsx
+const [count, setCount] = useState(0)
+```
+
+## Code examples
+
+### Example 1 — Render phase vs commit phase
+
+This shows the basic separation clearly.
+
+```tsx
+import { useEffect } from 'react'
+
+function Example() {
+  console.log('Render phase')
+
+  useEffect(() => {
+    console.log('Commit phase effect')
+  }, [])
+
+  return <p>Hello</p>
+}
+```
+
+The component function runs during render. The effect runs after commit.
+
+### Example 2 — Why renders should stay pure
+
+Side effects during render create unstable behavior.
+
+```tsx
+function BadExample() {
+  localStorage.setItem('theme', 'dark')
+  return <p>Rendered</p>
+}
+```
+
+```tsx
+import { useEffect } from 'react'
+
+function GoodExample() {
+  useEffect(() => {
+    localStorage.setItem('theme', 'dark')
+  }, [])
+
+  return <p>Rendered</p>
+}
+```
+
+### Example 3 — Hook ordering rule
+
+This is the classic broken pattern.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function BrokenComponent({ enabled }: { enabled: boolean }) {
+  const [count, setCount] = useState(0)
+
+  if (enabled) {
+    useEffect(() => {
+      console.log('This breaks hook ordering')
+    }, [])
+  }
+
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+The problem is not style. React can no longer rely on stable hook positions.
+
+### Example 4 — Stable hook order fix
+
+Move the condition inside the effect, not around the hook call.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function SafeComponent({ enabled }: { enabled: boolean }) {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    if (!enabled) return
+    console.log('Safe effect with stable hook order')
+  }, [enabled])
+
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+### Example 5 — How React tracks multiple hooks by order
+
+React cares about the sequence, not the variable names.
+
+```tsx
+function Example() {
+  const [name, setName] = useState('')
+  const [count, setCount] = useState(0)
+  const [open, setOpen] = useState(false)
+
+  return null
+}
+```
+
+Internally, React is effectively matching “first state hook,” “second state hook,” and “third state hook” by position.
+
+### Example 6 — Strict Mode double invocation in development
+
+This behavior helps reveal unsafe render logic and missing cleanup.
+
+```tsx
+import { useEffect } from 'react'
+
+function StrictModeExample() {
+  console.log('Render happened')
+
+  useEffect(() => {
+    console.log('Effect started')
+
+    return () => {
+      console.log('Effect cleaned up')
+    }
+  }, [])
+
+  return <p>Watch the console in development</p>
+}
+```
+
+In development with Strict Mode, you may see the render and effect logs more than once on purpose.
+
+### Example 7 — Cleanup matters
+
+Strict Mode often exposes missing cleanup quickly.
+
+```tsx
+import { useEffect } from 'react'
+
+function ChatConnection() {
+  useEffect(() => {
+    const socket = new WebSocket('wss://example.com/chat')
+
+    return () => {
+      socket.close()
+    }
+  }, [])
+
+  return <p>Connected</p>
+}
+```
+
+### Example 8 — State updates schedule a rerender
+
+A rerender recomputes the next UI shape.
+
+```tsx
+import { useState } from 'react'
+
+function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <button onClick={() => setCount((currentCount) => currentCount + 1)}>
+      Count: {count}
+    </button>
+  )
+}
+```
+
+React reruns the component to produce the next tree, then commits the minimal necessary DOM changes.
+
+### Example 9 — Custom hooks still follow the same rules
+
+Custom hooks do not escape hook ordering rules. They package them.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(true)
+
+  useEffect(() => {
+    function handleOnline() {
+      setIsOnline(true)
+    }
+
+    function handleOffline() {
+      setIsOnline(false)
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  return isOnline
+}
+```
+
+### Example 10 — Fiber awareness at a practical level
+
+You do not interact with Fiber directly, but its goals explain modern React behavior.
+
+```txt
+Fiber helps React:
+- break rendering work into units
+- track updates through the tree
+- support priorities and modern concurrent behavior
+- separate render work from commit work
+```
+
+<LivePreview id="react-internals" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Treating the Rules of Hooks like arbitrary lint rules.
+**Fix:** Understand that React matches hooks by call order.
+**Why:** Stable hook order is how state stays attached to the correct hook slots.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Performing side effects during render.
+**Fix:** Keep rendering pure and move side effects into effects or event handlers.
+**Why:** React may rerun rendering, abandon work, or run extra checks in development.
+</Callout>
+
+<Callout type="tip">
+Strict Mode’s double invocation in development is usually helping you. It often reveals missing cleanup and impure render logic earlier than production bugs would.
+</Callout>
+
+<Callout type="note">
+You do not need to know the full internal implementation of Fiber to benefit from it. The useful level is understanding what problems it helps React solve.
+</Callout>
+
+## How this is used in real projects
+
+This internal awareness shows up constantly in real engineering work. When a hook bug appears, understanding hook ordering helps you fix it quickly. When a component reconnects twice in development, knowing Strict Mode behavior keeps you from debugging the wrong thing. When a render feels expensive, understanding render versus commit helps you reason about what React is actually doing.
+
+The best teams do not treat React internals as trivia. They use just enough internal knowledge to write safer, cleaner code and debug issues faster.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** Why must hooks always run in the same order?
+**A:** Because React tracks hooks by call position during rendering, not by variable name. If hook order changes between renders, React can no longer match the right state and effect slots correctly, which breaks the component’s internal state mapping.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the React Strict Mode double invocation and why does it happen?
+**A:** In development, React may intentionally invoke render and effect-related logic more than once to help detect impure rendering and missing cleanup behavior. It is a development-only stress test that helps surface unsafe assumptions early.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is Fiber at a practical level?
+**A:** Fiber is React’s internal architecture for representing and updating the component tree. Practically, it helps React manage rendering work more flexibly, separate render from commit, and support modern update behavior more effectively.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between render and commit?
+**A:** Render is when React calculates what the UI should look like next. Commit is when React applies the necessary changes to the real DOM and then runs effects. This separation is why side effects do not belong inside render logic.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Why do hooks need a stable call order?"
+  options={[
+    "Because React matches hooks by position during rendering",
+    "Because JavaScript requires it for variables",
+    "Only because ESLint prefers it",
+    "Because hooks run only on the server"
+  ]}
+  correct={0}
+  explanation="React uses hook position during rendering to map state and effect slots, so changing the order breaks that internal mapping."
+/>
+
+<Quiz
+  question="What is hydration?"
+  options={[
+    "Attaching React interactivity to server-rendered HTML",
+    "A database transaction",
+    "A CSS reset rule",
+    "A type inference technique"
+  ]}
+  correct={0}
+  explanation="Hydration is the process of attaching React’s interactive behavior to HTML that was already rendered on the server."
+/>
+
+<Quiz
+  question="What is one main reason Strict Mode runs extra checks in development?"
+  options={[
+    "To surface impure renders and missing cleanup",
+    "To make production slower",
+    "To disable state updates permanently",
+    "To remove effects from React"
+  ]}
+  correct={0}
+  explanation="Strict Mode’s extra development-only behavior helps reveal render side effects and cleanup bugs earlier."
+/>
+
+<MarkDone slug="38-react-internals" track="react" />

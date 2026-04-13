@@ -1,0 +1,176 @@
+---
+title: "Senior interview questions"
+description: "Review 15 senior-level React interview questions with full answers covering architecture, state, performance, hooks, rendering, and production thinking."
+level: "advanced"
+minutes: 14
+stage: "Stage 6 — Advanced"
+slug: "42-senior-interview-questions"
+track: "react"
+---
+
+## Why this exists
+
+Senior React interviews rarely focus on syntax alone. They test how you reason. A senior candidate is usually expected to explain tradeoffs, architecture decisions, debugging strategy, and long-term maintainability, not just recite hook names.
+
+This topic exists to help you practice that level of thinking. The goal is not to memorize perfect scripts. It is to understand the deeper ideas well enough that you can explain them clearly under pressure.
+
+Because the explicit 15-question source list was not spelled out in the accessible project docs, this lesson uses a curated 15-question set built directly from the advanced React topics already covered in this track. That keeps the final review aligned with the actual curriculum.
+
+## How to answer senior questions well
+
+A strong senior answer usually has four parts:
+
+1. define the concept clearly
+2. explain the tradeoff or why it matters
+3. give a practical example
+4. mention common mistakes or limits
+
+That structure makes your answer sound experienced instead of memorized.
+
+## Senior interview set
+
+<Callout type="interview">
+**Q1:** How do you decide where state should live in a React application?
+**A:** I start with the smallest owner possible. If only one component needs the state, I keep it local. If multiple related components need it, I lift it to their nearest common parent. If the state becomes cross-cutting, such as theme or auth, context may be a good fit. If the state is broad, highly interactive, or shared across many areas, I consider a dedicated state library. I also separate client state from server state, because fetched data often belongs in a server-state tool or a server-rendered layer rather than ordinary local state.
+</Callout>
+
+<Callout type="interview">
+**Q2:** How do you avoid prop drilling without overusing context?
+**A:** First I decide whether the prop chain is actually a problem. Passing props through two or three related components is often fine. It becomes a real issue when many intermediate components are forwarding values they do not conceptually care about. At that point I consider composition changes, context for cross-cutting values, or a store when the state is broader. The senior answer is not “never drill props.” It is “use the simplest ownership model that stays clear.”
+</Callout>
+
+<Callout type="interview">
+**Q3:** What is the difference between client state and server state?
+**A:** Client state is UI-owned state such as toggles, form drafts, active tabs, or modal visibility. Server state is data that comes from a backend and may need caching, refetching, stale handling, retries, or synchronization with mutations. Treating server state like ordinary local state often leads to duplicated loading logic and poor caching behavior. That is why tools like TanStack Query exist, and why server-rendered data patterns are often cleaner for some apps.
+</Callout>
+
+<Callout type="interview">
+**Q4:** When would you use context, and when would you use a state library?
+**A:** Context is a good fit for shared cross-cutting values with moderate complexity, such as theme, locale, or a simple authenticated user object. A state library is usually a better fit when shared state becomes broader, more dynamic, more performance-sensitive, or needs stronger tooling and structure. I choose based on complexity and ownership, not because one tool is always better.
+</Callout>
+
+<Callout type="interview">
+**Q5:** How do you think about performance optimization in React?
+**A:** I start by identifying the actual bottleneck instead of adding memoization everywhere. I look for expensive rerenders, large lists, unnecessary state updates, and slow render work. Then I choose the lightest fix that matches the problem, such as better state placement, list virtualization, deferred values, memoization, or reducing work inside render. I treat performance as measurement-driven work, not superstition-driven work.
+</Callout>
+
+<Callout type="interview">
+**Q6:** When do `React.memo`, `useMemo`, and `useCallback` actually help?
+**A:** They help when they prevent meaningful repeated work or reduce unnecessary rerenders in a real bottleneck path. They do not help just because they exist. `React.memo` can help stable child components avoid rerendering when props do not change. `useMemo` can help cache expensive derived values. `useCallback` can help keep callback identity stable when that identity matters. Overusing them adds cognitive cost and can make code harder to read without real wins.
+</Callout>
+
+<Callout type="interview">
+**Q7:** What is the biggest mistake developers make with `useEffect`?
+**A:** A common mistake is using `useEffect` for logic that should happen during render, in event handlers, or on the server instead. Another big mistake is treating effects like a general-purpose place to “make things work” without thinking about dependencies, cleanup, or ownership. I try to use effects only for true side effects such as subscriptions, timers, DOM interactions, or network work that must happen after commit.
+</Callout>
+
+<Callout type="interview">
+**Q8:** Why must hooks always run in the same order?
+**A:** Because React tracks hooks by call position during rendering, not by variable name. If hook order changes, React can no longer match the right state and effect slots correctly. That is why hooks must be called at the top level and never conditionally. It is not an arbitrary style rule. It is how React’s hook system works internally.
+</Callout>
+
+<Callout type="interview">
+**Q9:** What is the difference between render phase and commit phase?
+**A:** Render phase is when React calculates what the next UI should look like. Commit phase is when React applies the necessary changes to the DOM and then runs effects. This matters because render should stay pure, while side effects belong after commit. Understanding that distinction helps explain why `useEffect` exists and why side effects inside render are risky.
+</Callout>
+
+<Callout type="interview">
+**Q10:** What is React Strict Mode double invocation and why does it happen?
+**A:** In development, React may intentionally invoke render and effect-related paths more than once to help reveal impure render logic and missing cleanup. It is a development-only stress test, not the exact production behavior. It helps teams catch unsafe assumptions early, especially around effects, subscriptions, and code that accidentally causes side effects during render.
+</Callout>
+
+<Callout type="interview">
+**Q11:** How do you handle errors well in a React app?
+**A:** I separate render-time failures from async workflow failures. Error boundaries handle render crashes in a section of the tree. Async operations and event handlers need local error handling and user-facing state. I also think about retry flows, useful fallback UI, and centralized reporting through an error tracking tool. Good error handling is not just “catch and log.” It is about resilient UX and observability.
+</Callout>
+
+<Callout type="interview">
+**Q12:** How do you structure a large React codebase so it stays maintainable?
+**A:** I use clear ownership boundaries. Route or feature code stays close to the area that owns it. Shared UI is centralized only when it is truly shared. Server-only utilities and data access stay isolated from client code. I try to make the file structure answer “where should this go?” quickly, because that matters a lot as teams and route counts grow.
+</Callout>
+
+<Callout type="interview">
+**Q13:** What do you look for in a senior-level React code review?
+**A:** I look for behavior risk first, then maintainability. I check state ownership, duplicated or derived state, effect correctness, loading and error handling, testability, hidden coupling, and whether the design is simpler or more complicated than it needs to be. A strong review goes beyond formatting and asks whether the change improves or harms the system.
+</Callout>
+
+<Callout type="interview">
+**Q14:** How do you decide between CSR, SSR, SSG, and server-first rendering patterns?
+**A:** I start from product needs. If the page is SEO-critical or benefits from immediate meaningful HTML, I lean toward server rendering or static generation. If the data is stable, SSG is attractive. If the data is request-specific, SSR or dynamic server rendering may be better. If the UI is heavily interactive and the page does not benefit much from server HTML, client-side rendering may still be reasonable. I choose based on user experience, data freshness, and complexity rather than ideology.
+</Callout>
+
+<Callout type="interview">
+**Q15:** What makes a React application feel senior-level or production-ready?
+**A:** It is usually a combination of good architecture and good operational habits. The app has clear state ownership, maintainable boundaries, resilient error handling, safe environment management, observability, rollout safety, performance awareness, and a codebase structure that scales with the team. Senior-level quality is less about cleverness and more about consistency, clarity, and long-term reliability.
+</Callout>
+
+<LivePreview id="senior-interview" />
+
+## How to use this topic
+
+Do not try to memorize every answer word for word. Practice turning each answer into your own language while keeping the same structure:
+
+- define the concept
+- explain the tradeoff
+- give a practical example
+- mention a common pitfall
+
+That will sound much stronger in a real interview.
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Answering senior questions with only API definitions.
+**Fix:** Include tradeoffs, examples, and decision-making.
+**Why:** Senior interviews test judgment, not just recall.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Giving one “always do this” answer for architecture questions.
+**Fix:** Explain how the right answer depends on ownership, scale, and product needs.
+**Why:** Senior React work is mostly about choosing between tradeoffs.
+</Callout>
+
+<Callout type="tip">
+If you get stuck in an interview, start with the simplest clear definition, then build outward into tradeoffs and examples.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What usually makes a React interview answer sound senior?"
+  options={[
+    "Explaining tradeoffs and practical decision-making",
+    "Listing as many hook names as possible",
+    "Speaking only in abstract theory",
+    "Avoiding real examples"
+  ]}
+  correct={0}
+  explanation="Senior answers usually define the concept, explain the tradeoff, and connect it to real implementation choices rather than only listing definitions."
+/>
+
+<Quiz
+  question="Which kind of issue should a strong senior React code review focus on first?"
+  options={[
+    "Behavior risk and maintainability",
+    "Only spacing and semicolons",
+    "Only package popularity",
+    "Only whether the component name sounds nice"
+  ]}
+  correct={0}
+  explanation="Formatting matters, but senior review quality usually comes from catching behavioral, architectural, and maintainability risks early."
+/>
+
+<Quiz
+  question="What is a strong default when choosing where state should live?"
+  options={[
+    "Keep it as local as possible first",
+    "Put it in global state immediately",
+    "Always use context",
+    "Always duplicate it for convenience"
+  ]}
+  correct={0}
+  explanation="Starting with the smallest reasonable owner usually keeps state clearer and avoids unnecessary coupling."
+/>
+
+<MarkDone slug="42-senior-interview-questions" track="react" />

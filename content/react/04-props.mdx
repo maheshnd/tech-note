@@ -1,0 +1,571 @@
+---
+title: "Props"
+description: "Learn what props are, how parent components pass data into children, how callbacks and children work, and why props must stay read-only."
+level: "beginner"
+minutes: 10
+stage: "Stage 1 — Foundation"
+slug: "04-props"
+track: "react"
+---
+
+## Why this exists
+
+Components become truly useful only when they can be reused with different data. A `Card` is not very helpful if it always shows the same title, the same description, and the same image every time. Props exist so parent components can pass values into child components and configure how those children behave or what they display. Without props, every component would be mostly fixed and much harder to reuse.
+
+Props are also how React components communicate in the most basic direction: from parent to child. A parent owns some values and passes them down. This keeps the data flow predictable. Instead of child components reaching into the rest of the app and changing things however they want, props make it clear where data comes from and how components are configured.
+
+## How it works
+
+Props are values passed from a parent component to a child component. You pass them in a way that looks similar to HTML attributes. For example, `<UserCard name="Mahesh" />` passes the string `"Mahesh"` into the `UserCard` component. Inside the child, those values are available through the `props` object or through destructuring in the function parameters.
+
+Props can be almost any JavaScript value: strings, numbers, booleans, arrays, objects, functions, and even JSX. This is one of the reasons React components are flexible. A parent can give a child data to display, a callback to run, or nested content through `children`.
+
+Props are read-only. This is a very important rule. A child component should never try to modify the props it receives. The reason is simple: props belong to the parent, not the child. If the child could change them freely, the data flow in your app would become confusing and unpredictable. In React, the parent decides what values to pass, and the child renders based on those values.
+
+One special prop is `children`. When you write a component with opening and closing tags, like `<Panel>...</Panel>`, the JSX inside becomes `props.children`. This is useful when you want a wrapper component that does not know exactly what content it will contain ahead of time.
+
+Functions can also be passed as props. This is how a child can notify a parent that something happened. The child does not directly change the parent. Instead, the parent passes a callback function, and the child calls it. This pattern is the foundation of parent-child interaction in React.
+
+You can also set default values for optional props using default parameters during destructuring. This is cleaner than checking for missing values throughout the component. Another pattern you will see is prop spreading, like `{...buttonProps}`. It is useful for forwarding props, but it must be used carefully because you can accidentally pass invalid or unwanted values into DOM elements.
+
+In older JavaScript-only React projects, you may see `PropTypes` used to validate props at runtime. In TypeScript projects, TypeScript usually replaces that job by checking prop shapes statically. The goal is similar in both cases: make it clear what a component expects.
+
+Props and state are also different. Props come from outside the component. State lives inside the component. Props configure a component from the outside, while state tracks data the component owns internally. When props must be passed through many layers just to reach a deep child, you get prop drilling. That is not always a bug, but it can become messy, which is why later topics introduce context and other patterns.
+
+## Syntax
+
+```tsx
+function Greeting({ name }: { name: string }) {
+  return <h1>Hello, {name}</h1>
+}
+```
+
+## Code examples
+
+### Example 1 — Passing a string prop and rendering it
+
+The most basic prop is a string value passed from parent to child.
+
+```tsx
+function Greeting({ name }: { name: string }) {
+  return <h1>Hello, {name}</h1>
+}
+
+export default function App() {
+  return <Greeting name="Mahesh" />
+}
+```
+
+The parent passes `name`, and the child reads it and renders it. That is the core props pattern.
+
+### Example 2 — Passing a number prop
+
+Props are not limited to strings. Numbers work the same way.
+
+```tsx
+function Score({ points }: { points: number }) {
+  return <p>Points: {points}</p>
+}
+
+export default function App() {
+  return <Score points={42} />
+}
+```
+
+Numbers use braces because they are JavaScript values, not string literals.
+
+### Example 3 — Passing a boolean prop
+
+Boolean props have a shorthand form in JSX.
+
+```tsx
+function Status({ isActive }: { isActive: boolean }) {
+  return <p>{isActive ? 'Active' : 'Inactive'}</p>
+}
+
+export default function App() {
+  return (
+    <>
+      <Status isActive={true} />
+      <Status isActive />
+    </>
+  )
+}
+```
+
+Writing `isActive` by itself means `isActive={true}`. That shorthand is convenient, but you need to remember what it means.
+
+### Example 4 — Passing an object as a prop
+
+Props can hold full objects when a component needs related data together.
+
+```tsx
+type User = {
+  name: string
+  role: string
+}
+
+function UserCard({ user }: { user: User }) {
+  return (
+    <section>
+      <h2>{user.name}</h2>
+      <p>{user.role}</p>
+    </section>
+  )
+}
+
+export default function App() {
+  const user = {
+    name: 'Mahesh',
+    role: 'Frontend engineer',
+  }
+
+  return <UserCard user={user} />
+}
+```
+
+Passing an object is common when the data belongs together conceptually.
+
+### Example 5 — Passing an array as a prop and mapping it
+
+A parent can pass a list of values into a child, and the child can render them.
+
+```tsx
+function TopicList({ topics }: { topics: string[] }) {
+  return (
+    <ul>
+      {topics.map((topic) => (
+        <li key={topic}>{topic}</li>
+      ))}
+    </ul>
+  )
+}
+
+export default function App() {
+  return <TopicList topics={['JSX', 'Props', 'State']} />
+}
+```
+
+This is useful when one component owns the data and another is responsible for displaying it.
+
+### Example 6 — Passing a function as a prop
+
+Callbacks let a child notify a parent that something happened.
+
+```tsx
+function SaveButton({
+  onSave,
+}: {
+  onSave: () => void
+}) {
+  return <button onClick={onSave}>Save</button>
+}
+
+export default function App() {
+  function handleSave() {
+    console.log('Saved from parent logic')
+  }
+
+  return <SaveButton onSave={handleSave} />
+}
+```
+
+The child does not decide what "save" means. It just calls the function the parent passed in.
+
+### Example 7 — The `children` prop
+
+`children` is how wrapper components render whatever JSX is placed between their tags.
+
+```tsx
+function Panel({ children }: { children: React.ReactNode }) {
+  return <section className="panel">{children}</section>
+}
+
+export default function App() {
+  return (
+    <Panel>
+      <h2>Policy details</h2>
+      <p>Coverage starts on April 1.</p>
+    </Panel>
+  )
+}
+```
+
+The `Panel` component does not know ahead of time what content it will wrap. It simply renders `children`.
+
+### Example 8 — Default prop values using destructuring defaults
+
+Optional props often need sensible defaults.
+
+```tsx
+function Badge({
+  label,
+  tone = 'neutral',
+}: {
+  label: string
+  tone?: 'neutral' | 'success'
+}) {
+  return <span>{label} ({tone})</span>
+}
+
+export default function App() {
+  return (
+    <>
+      <Badge label="Draft" />
+      <Badge label="Approved" tone="success" />
+    </>
+  )
+}
+```
+
+Default values make components easier to use because callers do not have to pass every optional prop every time.
+
+### Example 9 — Prop spreading
+
+Spread syntax can forward many props at once.
+
+```tsx
+type ButtonProps = {
+  type?: 'button' | 'submit'
+  disabled?: boolean
+  className?: string
+}
+
+function Button(props: ButtonProps) {
+  return <button {...props}>Save</button>
+}
+
+export default function App() {
+  const buttonProps = {
+    type: 'button' as const,
+    disabled: false,
+    className: 'primary-button',
+  }
+
+  return <Button {...buttonProps} />
+}
+```
+
+This is useful for forwarding props, but it can also hide what is being passed, so use it carefully.
+
+### Example 10 — A reusable Card component with multiple props
+
+Props let one component adapt to many different cases.
+
+```tsx
+type CardProps = {
+  title: string
+  value: string
+  description: string
+}
+
+function Card({ title, value, description }: CardProps) {
+  return (
+    <article>
+      <h2>{title}</h2>
+      <p>{value}</p>
+      <small>{description}</small>
+    </article>
+  )
+}
+
+export default function App() {
+  return (
+    <section>
+      <Card
+        title="Active policies"
+        value="184"
+        description="Policies currently in force"
+      />
+      <Card
+        title="Pending approvals"
+        value="9"
+        description="Claims waiting for review"
+      />
+    </section>
+  )
+}
+```
+
+The same component renders different content because the parent gives it different prop values.
+
+### Example 11 — A Button component with several props
+
+Reusable UI components often accept multiple props for behavior and appearance.
+
+```tsx
+type ButtonProps = {
+  onClick: () => void
+  label: string
+  disabled?: boolean
+  variant?: 'primary' | 'secondary'
+}
+
+function Button({
+  onClick,
+  label,
+  disabled = false,
+  variant = 'primary',
+}: ButtonProps) {
+  return (
+    <button onClick={onClick} disabled={disabled} data-variant={variant}>
+      {label}
+    </button>
+  )
+}
+
+export default function App() {
+  return (
+    <Button
+      onClick={() => console.log('Clicked')}
+      label="Submit"
+      variant="secondary"
+    />
+  )
+}
+```
+
+This is a common pattern in design systems: one component, many configuration props.
+
+### Example 12 — Lifting state with props
+
+Sometimes the parent owns the state and passes both the value and the setter down.
+
+```tsx
+import { useState } from 'react'
+
+function NameInput({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (nextValue: string) => void
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder="Type your name"
+    />
+  )
+}
+
+export default function App() {
+  const [name, setName] = useState('')
+
+  return (
+    <section>
+      <NameInput value={name} onChange={setName} />
+      <p>Hello, {name || 'friend'}.</p>
+    </section>
+  )
+}
+```
+
+The child does not own the state. The parent owns it and passes both the current value and the update function as props.
+
+### Example 13 — The prop drilling problem
+
+Passing the same prop through many layers can become noisy.
+
+```tsx
+function UserName({ name }: { name: string }) {
+  return <p>{name}</p>
+}
+
+function ProfilePanel({ name }: { name: string }) {
+  return <UserName name={name} />
+}
+
+function Sidebar({ name }: { name: string }) {
+  return <ProfilePanel name={name} />
+}
+
+export default function App() {
+  return <Sidebar name="Mahesh" />
+}
+```
+
+This works, but notice how `name` is passed through every layer even though some components only forward it. That is prop drilling.
+
+### Example 14 — A configurable Avatar component
+
+This example combines several common prop patterns in one reusable component.
+
+```tsx
+type AvatarProps = {
+  image?: string
+  name: string
+  size?: number
+  fallback?: string
+}
+
+function Avatar({
+  image,
+  name,
+  size = 48,
+  fallback = '?',
+}: AvatarProps) {
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt={name}
+        width={size}
+        height={size}
+      />
+    )
+  }
+
+  return (
+    <div
+      aria-label={name}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '999px',
+        display: 'grid',
+        placeItems: 'center',
+        backgroundColor: '#ddd',
+      }}
+    >
+      {fallback}
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <section>
+      <Avatar
+        image="/mahesh.png"
+        name="Mahesh"
+        size={64}
+      />
+      <Avatar
+        name="Guest user"
+        fallback="G"
+      />
+    </section>
+  )
+}
+```
+
+This component uses strings, numbers, optional props, default values, and fallback rendering. That makes it a good real-world props example.
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Trying to modify props inside the child component.
+**Fix:** Treat props as read-only values from the parent.
+**Why:** Props belong to the parent. Mutating them breaks React's one-way data flow and makes behavior unpredictable.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting that writing `disabled` means `disabled={true}`.
+**Fix:** Remember that boolean prop shorthand automatically means `true`.
+**Why:** JSX treats a bare boolean prop as the `true` value, which can surprise beginners if they were expecting "just a label."
+</Callout>
+
+<Callout type="tip">
+Destructure props in the function signature when possible. It makes components cleaner and makes it obvious which values the component expects.
+</Callout>
+
+<Callout type="tip">
+Use default values in destructuring for optional props. That keeps fallback logic close to the prop definition and avoids repetitive checks later.
+</Callout>
+
+<Callout type="warning">
+Spreading props blindly with `{...props}` can send invalid or unintended attributes to DOM elements. Use prop spreading when you understand exactly what is being forwarded.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is prop drilling and why is it a problem?
+**A:** Prop drilling happens when data must be passed through several intermediate components just to reach a deeply nested child. It is not always wrong, but it can make component trees noisy and harder to maintain. Components that do not truly need the value may still have to accept and forward it. As the tree grows, this can become frustrating, which is why tools like context exist.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between props and state?
+**A:** Props are values passed into a component from the outside, usually by a parent. State is data owned by the component itself and managed internally. Props configure a component, while state represents data that can change over time inside that component. A component reads props, but it owns and updates its own state.
+</Callout>
+
+## How this is used in real projects
+
+In real applications, props are everywhere because most components are not hardcoded. A dashboard card receives counts, labels, and trend values. A form field receives a label, current value, error text, and change handler. A modal receives whether it is open, what title to show, and what happens when the user closes it. Props are what make a single component flexible enough to be reused across many screens.
+
+Props are also one of the main ways teams keep their UI systems consistent. A shared `Button` component might accept props like `variant`, `disabled`, `loading`, and `onClick`. A shared `Avatar` might accept `image`, `name`, and `size`. Instead of rebuilding the same UI logic over and over, teams define reusable components with clear prop contracts. That keeps the product consistent and reduces duplication across the codebase.
+
+Prop drilling also becomes a real concern in larger apps. In a simple component tree, passing props through a few layers is perfectly fine. But when deeply nested screens require the same user, theme, or permission data again and again, the component tree can become cluttered with forwarding props. Recognizing that pain early helps you understand why later React patterns like context are useful.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What are props in React?
+**A:** Props are inputs passed from a parent component to a child component. They let components receive data, configuration, and callbacks from the outside. Props make components reusable because the same component can render different results depending on the values it receives. In React, props are one of the core ways components communicate.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why are props read-only?
+**A:** Props are read-only because they belong to the parent component that passed them in. If child components could mutate props directly, the data flow in the application would become confusing and hard to debug. React relies on predictable one-way data flow, where parents pass values down and children render based on them. If a value needs to change, the parent should pass a new prop value.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the `children` prop?
+**A:** `children` is a special React prop that represents the JSX placed between a component's opening and closing tags. It is useful for wrapper components like panels, modals, cards, and layout containers. Instead of hardcoding their content, those components can render whatever content the parent places inside them. This makes them much more flexible and reusable.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is prop drilling and why is it a problem?
+**A:** Prop drilling happens when the same prop has to be passed through multiple intermediate components to reach a deeply nested child. It can make component trees harder to read because some components are only forwarding data instead of using it themselves. This increases boilerplate and makes refactoring more awkward. It is one of the reasons React later introduces patterns like context.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you pass a function as a prop and why would you?
+**A:** You pass a function as a prop the same way you pass any other value, for example `<SaveButton onSave={handleSave} />`. The child component can call that function when an event happens, such as a click or input change. This pattern is useful because it lets the parent keep control over the logic while the child stays reusable. It is the main way child components communicate events back upward.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between props and state?
+**A:** Props come from outside the component, usually from a parent. State lives inside the component and is managed by that component itself. Props are used to configure the component, while state is used for data the component owns and updates over time. A component can read both, but only its own state is internally controlled by it.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Can a child component modify the props it receives?"
+  options={[
+    "Yes, children can always modify props directly",
+    "No, props are read-only",
+    "Only if the prop is a string",
+    "Only if the child uses useEffect"
+  ]}
+  correct={1}
+  explanation="Props are read-only in React. If a value needs to change, the parent should pass a new value down instead of the child mutating the prop."
+/>
+
+<Quiz
+  question="What is `props.children`?"
+  options={[
+    "A list of child component file names",
+    "The JSX content placed between a component's opening and closing tags",
+    "A built-in array of state values",
+    "A hook for rendering nested routes"
+  ]}
+  correct={1}
+  explanation="`props.children` is the nested JSX content passed between a component's tags. It is commonly used for wrapper components like panels, modals, and layouts."
+/>
+
+<Quiz
+  question="How do you set a default value for a prop?"
+  options={[
+    "By mutating the prop inside the component",
+    "By using a default parameter in destructuring",
+    "By calling setState on the prop",
+    "By using only PropTypes"
+  ]}
+  correct={1}
+  explanation="A clean modern way to set default prop values is to use default parameters when destructuring props, such as `function Badge({ tone = 'neutral' })`."
+/>
+
+<MarkDone slug="04-props" track="react" />
+<LivePreview id="props-card" />

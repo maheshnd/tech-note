@@ -1,0 +1,490 @@
+---
+title: "Components"
+description: "Learn what React components are, why they exist, how to organize them, and how to build a UI from small reusable pieces."
+level: "beginner"
+minutes: 9
+stage: "Stage 1 — Foundation"
+slug: "03-components"
+track: "react"
+---
+
+## Why this exists
+
+If every screen in an app were written as one giant block of markup and logic, even small changes would quickly become painful. You would duplicate the same button styles, card layouts, headers, and sections over and over. That makes code harder to read, harder to test, and harder to change safely. React components exist to solve that problem by letting you split the UI into small reusable pieces.
+
+A component is the basic building block of a React app. Instead of thinking "I am building one huge page," you start thinking "I am building a `Header`, a `Sidebar`, a `Card`, a `Button`, and a `MainContent` area." Each piece can focus on one job. That makes the whole application easier to understand and easier to grow.
+
+## How it works
+
+A React component is usually a JavaScript function that returns JSX. When React renders your app, it calls those functions to figure out what should appear on screen. If `App` returns `<Header />` and `<Main />`, React then renders those components too. This creates a component tree, where large components are built from smaller ones.
+
+React knows the difference between a normal HTML tag and a custom component by the name. Lowercase names like `div`, `button`, and `section` are treated as built-in HTML elements. Capitalized names like `Header`, `ProductCard`, and `UserMenu` are treated as React components. That is why component names must start with a capital letter.
+
+Modern React uses functional components as the standard approach. A functional component is just a function that returns JSX. In older codebases you may see class components, but functional components are the modern default because they are simpler and work naturally with hooks.
+
+As your UI grows, you nest components inside other components. A page component might render a `Sidebar`, `TopBar`, and `DashboardGrid`. Inside the grid, each item might be a `MetricCard`. This nesting creates the component tree that React renders. The goal is not to make many tiny files for no reason. The goal is to make each component focused and easy to reason about.
+
+You will also hear terms like presentational component and container component. A presentational component mainly receives data and renders UI. A container component mainly holds logic, fetches or prepares data, and passes values down. In modern React, the line is not always strict, but the idea is still useful: keep rendering concerns separate from heavy logic when you can.
+
+Components also make import and export patterns important. Some components are exported as a default export, and others as named exports. Both work. The important thing is understanding how they are imported and keeping your file organization consistent. A common team convention is one component per file because it makes components easier to find, test, and reuse.
+
+At a high level, props are how components receive data from parents. This topic only introduces that idea. The next topic covers props in detail.
+
+## Syntax
+
+```tsx
+function Greeting() {
+  return <h1>Hello</h1>
+}
+```
+
+## Code examples
+
+### Example 1 — The simplest possible functional component
+
+The smallest React component is a function that returns JSX.
+
+```tsx
+export default function HelloMessage() {
+  return <h1>Hello from a component</h1>
+}
+```
+
+This is a functional component. React calls the function and renders the JSX it returns.
+
+### Example 2 — A component that renders another component
+
+Components become useful when they can be nested inside each other.
+
+```tsx
+function Title() {
+  return <h1>Dashboard</h1>
+}
+
+export default function App() {
+  return (
+    <main>
+      <Title />
+    </main>
+  )
+}
+```
+
+`App` renders `Title`, which shows how one component can be built from another.
+
+### Example 3 — Default export vs named export
+
+React components can be exported in different ways depending on how you want to import them later.
+
+```tsx
+// Header.tsx
+export default function Header() {
+  return <header>Header</header>
+}
+```
+
+```tsx
+// layout.tsx
+export function Sidebar() {
+  return <aside>Sidebar</aside>
+}
+
+export function Footer() {
+  return <footer>Footer</footer>
+}
+```
+
+Default exports are imported without braces. Named exports are imported with braces and must match the exported name.
+
+### Example 4 — Importing a component from another file
+
+Once a component lives in its own file, you import it where you want to use it.
+
+```tsx
+// Header.tsx
+export default function Header() {
+  return <header>Header</header>
+}
+```
+
+```tsx
+// App.tsx
+import Header from './Header'
+
+export default function App() {
+  return (
+    <div>
+      <Header />
+      <p>Welcome to the app.</p>
+    </div>
+  )
+}
+```
+
+This is why one component per file is such a common convention. The imports stay clear and predictable.
+
+### Example 5 — A component tree
+
+Real apps are usually trees of components, not one giant file.
+
+```tsx
+function Header() {
+  return <header>Header</header>
+}
+
+function Sidebar() {
+  return <aside>Sidebar</aside>
+}
+
+function Main() {
+  return <main>Main content</main>
+}
+
+function Footer() {
+  return <footer>Footer</footer>
+}
+
+export default function App() {
+  return (
+    <div>
+      <Header />
+      <div>
+        <Sidebar />
+        <Main />
+      </div>
+      <Footer />
+    </div>
+  )
+}
+```
+
+Here `App` is the root of the tree, and the other components are children inside it.
+
+### Example 6 — Breaking a complex UI into components
+
+A messy screen becomes easier to maintain when you split it into focused parts.
+
+```tsx
+// Before: one large component
+export default function DashboardPage() {
+  return (
+    <section>
+      <header>
+        <h1>Claims dashboard</h1>
+        <button>New claim</button>
+      </header>
+      <div>
+        <article>
+          <h2>Open claims</h2>
+          <p>14</p>
+        </article>
+        <article>
+          <h2>Pending review</h2>
+          <p>6</p>
+        </article>
+      </div>
+    </section>
+  )
+}
+```
+
+```tsx
+function DashboardHeader() {
+  return (
+    <header>
+      <h1>Claims dashboard</h1>
+      <button>New claim</button>
+    </header>
+  )
+}
+
+function MetricCard({ title, value }: { title: string; value: number }) {
+  return (
+    <article>
+      <h2>{title}</h2>
+      <p>{value}</p>
+    </article>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <section>
+      <DashboardHeader />
+      <div>
+        <MetricCard title="Open claims" value={14} />
+        <MetricCard title="Pending review" value={6} />
+      </div>
+    </section>
+  )
+}
+```
+
+The "after" version is easier to reuse and easier to change because each piece has one clear job.
+
+### Example 7 — A presentational component
+
+A presentational component mostly receives values and renders them.
+
+```tsx
+type StatusBadgeProps = {
+  label: string
+  tone: 'success' | 'warning'
+}
+
+export default function StatusBadge({
+  label,
+  tone,
+}: StatusBadgeProps) {
+  return (
+    <span className={tone === 'success' ? 'green' : 'yellow'}>
+      {label}
+    </span>
+  )
+}
+```
+
+This component does not fetch data or manage complicated logic. It just renders based on the props it receives.
+
+### Example 8 — A container component
+
+A container component usually holds logic and passes data into presentational components.
+
+```tsx
+function StatusBadge({
+  label,
+  tone,
+}: {
+  label: string
+  tone: 'success' | 'warning'
+}) {
+  return (
+    <span className={tone === 'success' ? 'green' : 'yellow'}>
+      {label}
+    </span>
+  )
+}
+
+export default function ClaimStatusContainer() {
+  const reviewComplete = true
+
+  const label = reviewComplete ? 'Approved' : 'Pending review'
+  const tone = reviewComplete ? 'success' : 'warning'
+
+  return <StatusBadge label={label} tone={tone} />
+}
+```
+
+The container decides what values should be shown. The presentational component focuses on how they are displayed.
+
+### Example 9 — Returning multiple elements with a Fragment
+
+Fragments let a component return multiple siblings without adding an extra wrapper element.
+
+```tsx
+export default function PageIntro() {
+  return (
+    <>
+      <h1>Policy summary</h1>
+      <p>Everything you need to know about this policy.</p>
+    </>
+  )
+}
+```
+
+This is useful when you need one JSX parent logically, but you do not want one extra DOM node in the output.
+
+### Example 10 — A component that conditionally renders different things
+
+Components often decide which UI to show based on simple conditions.
+
+```tsx
+export default function ReviewStatus({
+  approved,
+}: {
+  approved: boolean
+}) {
+  if (approved) {
+    return <p>Claim approved.</p>
+  }
+
+  return <p>Waiting for review.</p>
+}
+```
+
+This is a reminder that components are just functions. They can use normal JavaScript to decide what JSX to return.
+
+### Example 11 — Passing JSX as children
+
+React components can wrap other JSX, which is the first step toward understanding the `children` prop.
+
+```tsx
+function Panel({ children }: { children: React.ReactNode }) {
+  return <section className="panel">{children}</section>
+}
+
+export default function App() {
+  return (
+    <Panel>
+      <h2>Policy details</h2>
+      <p>Coverage starts on April 1.</p>
+    </Panel>
+  )
+}
+```
+
+`Panel` does not know the exact content ahead of time. It just renders whatever JSX is passed between its tags.
+
+### Example 12 — A real-world reusable Card component
+
+Reusable components become powerful when the same component is used with different data.
+
+```tsx
+type CardProps = {
+  title: string
+  value: string
+  description: string
+}
+
+function Card({ title, value, description }: CardProps) {
+  return (
+    <article>
+      <h2>{title}</h2>
+      <p>{value}</p>
+      <small>{description}</small>
+    </article>
+  )
+}
+
+export default function Dashboard() {
+  return (
+    <section>
+      <Card
+        title="Active policies"
+        value="184"
+        description="Policies currently in force"
+      />
+      <Card
+        title="Claims this week"
+        value="27"
+        description="Claims opened in the last 7 days"
+      />
+      <Card
+        title="Pending approvals"
+        value="9"
+        description="Claims waiting on manual review"
+      />
+    </section>
+  )
+}
+```
+
+The `Card` component is defined once but reused many times with different data. That is one of the biggest reasons components matter.
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Naming a component with a lowercase letter.
+**Fix:** Start component names with a capital letter, like `Header` or `UserCard`.
+**Why:** React treats lowercase names as HTML tags, not as custom components.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Defining a component inside another component without a good reason.
+**Fix:** Define reusable components outside other components in their own scope.
+**Why:** Recreating component definitions during every render can hurt performance and makes code harder to follow.
+</Callout>
+
+<Callout type="tip">
+One component per file is a strong default. It makes components easier to find, test, import, and reuse as the app grows.
+</Callout>
+
+<Callout type="tip">
+If a component is getting long, break it into smaller components with clearer responsibilities. Long components are often a sign that the UI has more than one job mixed together.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why must component names start with a capital letter?
+**A:** React uses capitalization to decide whether something is a built-in HTML element or a custom component. Lowercase tags like `div` and `button` are treated as normal DOM elements. Capitalized names like `Header` and `UserCard` are treated as React components that React should call as functions. Without that convention, React would not know which behavior you intended.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between a presentational and container component?
+**A:** A presentational component mainly focuses on how something looks. It receives data through props and renders UI. A container component mainly focuses on logic, such as choosing data, handling state, or preparing values to pass down. The distinction is not a strict law in modern React, but it is still a useful design mindset for keeping components focused.
+</Callout>
+
+## How this is used in real projects
+
+In a real application, components are what keep large user interfaces manageable. A product page, dashboard, or workflow screen is rarely built as one file. Instead, it is assembled from focused parts such as `TopBar`, `Sidebar`, `SearchFilters`, `MetricCard`, `ResultsTable`, and `EmptyState`. Each one solves a smaller UI problem. That makes it much easier for developers to change one part of the screen without breaking unrelated parts.
+
+This becomes even more important in team environments. If a claims dashboard is split into clear components, one developer can work on the filters, another can improve the summary cards, and another can update the table actions. When everything lives in one huge component, those changes collide constantly. Small components make collaboration safer and code reviews faster.
+
+Reusable components also improve consistency across the product. If the same `Card`, `Button`, or `StatusBadge` component is reused throughout the app, the UI feels more coherent and the codebase avoids duplication. You do not want five slightly different badge implementations scattered around the repo when one clean component could handle them all.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is a React component?
+**A:** A React component is a reusable piece of UI, usually written as a JavaScript function that returns JSX. Components let you break a screen into smaller, focused building blocks. React calls those functions to determine what should be rendered. Components can be nested together to form a full UI tree.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why must component names start with a capital letter?
+**A:** React uses capitalization as a signal to distinguish custom components from built-in HTML tags. If the name starts with a lowercase letter, React assumes it is a normal DOM element like `div` or `span`. If it starts with a capital letter, React treats it as a component function. This naming rule is part of how JSX is interpreted.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between a presentational and container component?
+**A:** A presentational component focuses mostly on rendering UI based on props. A container component focuses more on logic such as choosing data, handling state, or coordinating behavior, then passing values into other components. In real projects, many components contain a mix of both, but the distinction is still helpful as a design principle. It encourages cleaner separation of concerns.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why do we split UI into small components?
+**A:** Small components improve readability, reuse, and maintainability. They make it easier to reason about one part of the interface at a time instead of understanding a huge file all at once. They also reduce duplication because the same component can be reused with different props. In team settings, smaller components also make collaboration and testing much easier.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between default and named exports?
+**A:** A default export means the file exports one main value, and you can import it with any name you choose. A named export means the file exports specific named values, and you must import them with matching names inside braces. Both patterns are valid. Teams usually choose one based on consistency and how many things a file needs to export.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What happens if you name a React component with lowercase?"
+  options={[
+    "React treats it as an HTML tag",
+    "React automatically capitalizes it",
+    "React converts it into a hook",
+    "Nothing changes"
+  ]}
+  correct={0}
+  explanation="React treats lowercase names as built-in HTML elements. That is why custom component names must start with a capital letter."
+/>
+
+<Quiz
+  question="Where should you usually define a component?"
+  options={[
+    "Inside another component every time",
+    "Outside other components, in its own scope",
+    "Only in HTML files",
+    "Inside event handlers"
+  ]}
+  correct={1}
+  explanation="A component should usually be defined outside other components in its own scope. That keeps it reusable and avoids redefining it on every render."
+/>
+
+<Quiz
+  question="What does a functional component return?"
+  options={[
+    "Only strings",
+    "Only booleans",
+    "JSX",
+    "A CSS class"
+  ]}
+  correct={2}
+  explanation="A functional component returns JSX, which describes the UI React should render."
+/>
+
+<MarkDone slug="03-components" track="react" />
+<LivePreview id="component-composer" />

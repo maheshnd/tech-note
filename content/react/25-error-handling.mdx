@@ -1,0 +1,441 @@
+---
+title: "Error handling"
+description: "Learn what error boundaries catch, what they do not catch, how async errors should be handled separately, and how to design resilient fallback and retry flows."
+level: "intermediate"
+minutes: 8
+stage: "Stage 5 — Real World"
+slug: "25-error-handling"
+track: "react"
+---
+
+## Why this exists
+
+Real applications fail. Network requests time out. Third-party widgets throw. Data comes back in a different shape than expected. A section of the page crashes even though the rest of the screen is still fine. If the app has no error strategy, one failure can turn into a blank screen, a broken workflow, or a confusing user experience.
+
+This topic exists because React error handling has two different layers that many developers mix up:
+
+- render-time errors caught by error boundaries
+- async or event-handler errors handled with ordinary try/catch and state
+
+If you do not understand the difference, you either expect error boundaries to catch things they cannot catch, or you end up missing fallbacks and retry flows where users actually need them.
+
+Strong error handling is not just about catching exceptions. It is about giving users a recoverable experience and giving developers enough structure to log, inspect, and fix failures safely.
+
+## How it works
+
+An error boundary is a special React component that catches errors thrown during rendering, in lifecycle methods, and in constructors of its child tree. When an error boundary catches one of those errors, it can render fallback UI instead of letting the entire React tree crash.
+
+Traditional React error boundaries must be class components because they use lifecycle methods like `getDerivedStateFromError` and `componentDidCatch`. In real modern projects, many teams prefer the `react-error-boundary` library because it gives a cleaner functional-style API around the same concept.
+
+But error boundaries do **not** catch everything. They do not catch:
+
+- async errors from promises or `await`
+- errors thrown inside event handlers
+- errors outside the React rendering tree
+
+Those failures need normal handling patterns like `try/catch`, error state, and explicit fallback UI.
+
+That is why error boundaries and async error handling are complementary, not interchangeable. Boundaries protect rendering. Local try/catch and state protect non-render workflows.
+
+Fallback UI should do more than say “Something went wrong.” Good fallback UI usually:
+
+- explains that part of the screen failed
+- avoids crashing unrelated sections
+- offers a retry action when possible
+
+Retry flows matter because many failures are temporary. A request may work on the second attempt. A widget may succeed after a reset. An error boundary library can help reset the failed boundary and try again.
+
+Error parsing is also important. APIs do not always fail with a simple `error.message`. Sometimes useful information is nested in `error.data.message`, `response.errors[0].detail`, or another shape. Production apps often normalize those shapes into one clean user-facing message.
+
+Error logging is another major part of the real-world story. A good app may show a friendly message to the user while sending the technical details to a service like Sentry for developer investigation.
+
+Finally, boundary placement matters. One giant global error boundary protects the app shell, but local boundaries around independent widgets or sections often create a much better user experience. If one dashboard card fails, the whole dashboard should not necessarily disappear.
+
+## Syntax
+
+```tsx
+<ErrorBoundary fallback={<p>Something went wrong.</p>}>
+  <Widget />
+</ErrorBoundary>
+```
+
+## Code examples
+
+### Example 1 — Class-based error boundary
+
+This is the core React pattern.
+
+```tsx
+import React from 'react'
+
+type ErrorBoundaryState = {
+  hasError: boolean
+}
+
+export class ErrorBoundary extends React.Component<
+  React.PropsWithChildren,
+  ErrorBoundaryState
+> {
+  state: ErrorBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Logged error:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <p>Something went wrong in this section.</p>
+    }
+
+    return this.props.children
+  }
+}
+```
+
+### Example 2 — `react-error-boundary`
+
+This is the practical modern approach.
+
+```tsx
+import { ErrorBoundary } from 'react-error-boundary'
+
+function Fallback({
+  error,
+  resetErrorBoundary,
+}: {
+  error: Error
+  resetErrorBoundary: () => void
+}) {
+  return (
+    <section>
+      <p>{error.message}</p>
+      <button onClick={resetErrorBoundary}>Try again</button>
+    </section>
+  )
+}
+
+function App() {
+  return (
+    <ErrorBoundary FallbackComponent={Fallback}>
+      <Widget />
+    </ErrorBoundary>
+  )
+}
+```
+
+### Example 3 — `useErrorBoundary` for async code
+
+Async code does not automatically reach an error boundary. This hook bridges that gap.
+
+```tsx
+import { useErrorBoundary } from 'react-error-boundary'
+
+function AsyncWidget() {
+  const { showBoundary } = useErrorBoundary()
+
+  async function loadData() {
+    try {
+      const response = await fetch('/api/widget')
+
+      if (!response.ok) {
+        throw new Error('Widget request failed')
+      }
+    } catch (error) {
+      showBoundary(error)
+    }
+  }
+
+  return <button onClick={() => void loadData()}>Load widget</button>
+}
+```
+
+### Example 4 — `try/catch` in event handlers
+
+Event handlers need normal error handling.
+
+```tsx
+function SaveButton() {
+  async function handleClick() {
+    try {
+      throw new Error('Save failed')
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  return <button onClick={() => void handleClick()}>Save</button>
+}
+```
+
+An error boundary will not catch errors thrown in an event handler automatically.
+
+### Example 5 — API error state
+
+Async request errors should usually become user-facing state.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function UserList() {
+  const [users, setUsers] = useState<string[]>([])
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadUsers() {
+      try {
+        const response = await fetch('/api/users')
+
+        if (!response.ok) {
+          throw new Error('Could not load users')
+        }
+
+        const data = (await response.json()) as string[]
+        setUsers(data)
+      } catch (error) {
+        setError((error as Error).message)
+      }
+    }
+
+    void loadUsers()
+  }, [])
+
+  if (error) return <p>{error}</p>
+
+  return <ul>{users.map((user) => <li key={user}>{user}</li>)}</ul>
+}
+```
+
+### Example 6 — Retry button
+
+Users should be able to recover from many temporary failures.
+
+```tsx
+function RetryFallback({
+  resetErrorBoundary,
+}: {
+  resetErrorBoundary: () => void
+}) {
+  return (
+    <section>
+      <p>Widget failed to load.</p>
+      <button onClick={resetErrorBoundary}>Retry</button>
+    </section>
+  )
+}
+```
+
+### Example 7 — Error parsing
+
+Real API errors can have different shapes.
+
+```tsx
+type ApiError =
+  | { message: string }
+  | { data: { message: string } }
+
+function getErrorMessage(error: unknown): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return (error as { message: string }).message
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'data' in error &&
+    typeof (error as { data: { message?: unknown } }).data?.message === 'string'
+  ) {
+    return (error as { data: { message: string } }).data.message
+  }
+
+  return 'Something went wrong'
+}
+```
+
+Normalizing error shapes keeps user-facing messages consistent.
+
+### Example 8 — Boundary placement
+
+Several smaller boundaries are often better than one giant boundary.
+
+```tsx
+import { ErrorBoundary } from 'react-error-boundary'
+
+function Dashboard() {
+  return (
+    <section>
+      <ErrorBoundary fallback={<p>Chart failed.</p>}>
+        <RevenueChart />
+      </ErrorBoundary>
+
+      <ErrorBoundary fallback={<p>Activity feed failed.</p>}>
+        <ActivityFeed />
+      </ErrorBoundary>
+    </section>
+  )
+}
+```
+
+If one section crashes, the other can still work.
+
+### Example 9 — Complete example: resilient dashboard
+
+This combines local boundaries, async error state, and fallback UI.
+
+```tsx
+import { ErrorBoundary } from 'react-error-boundary'
+import { useEffect, useState } from 'react'
+
+function WidgetFallback({
+  resetErrorBoundary,
+}: {
+  resetErrorBoundary: () => void
+}) {
+  return (
+    <section>
+      <p>This widget crashed.</p>
+      <button onClick={resetErrorBoundary}>Retry widget</button>
+    </section>
+  )
+}
+
+function RevenueWidget() {
+  throw new Error('Chart renderer failed')
+}
+
+function NotificationsWidget() {
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadNotifications() {
+      try {
+        const response = await fetch('/api/notifications')
+
+        if (!response.ok) {
+          throw new Error('Could not load notifications')
+        }
+      } catch (error) {
+        setError((error as Error).message)
+      }
+    }
+
+    void loadNotifications()
+  }, [])
+
+  if (error) {
+    return <p>{error}</p>
+  }
+
+  return <p>Notifications loaded.</p>
+}
+
+function Dashboard() {
+  return (
+    <section>
+      <ErrorBoundary FallbackComponent={WidgetFallback}>
+        <RevenueWidget />
+      </ErrorBoundary>
+      <NotificationsWidget />
+    </section>
+  )
+}
+```
+
+One widget can fail without destroying the whole page.
+
+<LivePreview id="error-handling" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Expecting error boundaries to catch async request failures or event-handler errors.
+**Fix:** Use try/catch and local error state for async and event-handler failures.
+**Why:** Error boundaries only catch render-time errors in the child tree.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Wrapping only the entire app in one boundary.
+**Fix:** Place boundaries around independent sections too.
+**Why:** Local boundaries let one widget fail without taking unrelated UI down with it.
+</Callout>
+
+<Callout type="warning">
+Error boundaries do not catch errors in async code or event handlers.
+</Callout>
+
+<Callout type="tip">
+Use `react-error-boundary` library instead of writing class components.
+</Callout>
+
+<Callout type="tip">
+Place error boundaries around independent sections — not just one at the top.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is an error boundary and what does it not catch?
+**A:** An error boundary is a React component that catches errors thrown during rendering in its child tree and shows fallback UI instead of crashing that whole section. It does not catch async errors, event-handler errors, or failures outside the React rendering process.
+</Callout>
+
+## How this is used in real projects
+
+Production apps usually combine several layers of error handling. Render failures are isolated with boundaries. Async request failures become user-facing error states. Logging sends technical details to tools like Sentry. Retry flows help recover from temporary backend or network problems. Local boundaries protect independent parts of dashboards, editors, forms, and widgets so one crash does not wipe out the entire experience.
+
+This is also one of the clearest places where user experience and engineering quality overlap. A good error system is not only about preventing crashes. It is about making failure understandable, recoverable, and observable.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is an error boundary?
+**A:** An error boundary is a React component that catches errors thrown during rendering in its child component tree and renders fallback UI instead of letting that part of the app crash completely.
+</Callout>
+
+<Callout type="interview">
+**Q:** What errors does an error boundary NOT catch?
+**A:** Error boundaries do not catch async errors from promises, errors in event handlers, or errors outside the React render tree. Those need direct handling with try/catch and error state.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you handle async errors in React?
+**A:** Async errors are usually handled with try/catch around the request or action and then converted into local error state or passed into a boundary helper like `showBoundary` from `react-error-boundary` when you want fallback UI.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the fallback UI pattern?
+**A:** The fallback UI pattern means rendering an alternative safe interface when the main UI fails, such as an error card, retry button, or degraded but still usable section. The goal is graceful failure, not a blank screen.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does an error boundary catch?"
+  options={[
+    "Errors during rendering of child components",
+    "All async API errors automatically",
+    "All event handler errors automatically",
+    "Only CSS loading failures"
+  ]}
+  correct={0}
+  explanation="Error boundaries catch errors thrown during rendering in their child tree and replace that section with fallback UI."
+/>
+
+<Quiz
+  question="What does an error boundary NOT catch?"
+  options={[
+    "Render-time child component errors",
+    "Async errors and event handler errors",
+    "Layout route errors",
+    "Context provider errors"
+  ]}
+  correct={1}
+  explanation="Async failures and event-handler errors need normal try/catch or explicit forwarding because error boundaries do not catch them automatically."
+/>
+
+<MarkDone slug="25-error-handling" track="react" />

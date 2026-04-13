@@ -1,0 +1,321 @@
+---
+title: "Real-time React"
+description: "Learn how real-time UI works in React with polling, Server-Sent Events, WebSockets, and chat-style update patterns."
+level: "advanced"
+minutes: 10
+stage: "Stage 6 — Advanced"
+slug: "36-realtime-react"
+track: "react"
+---
+
+## Why this exists
+
+Some interfaces cannot wait for the user to refresh the page. Chat, live dashboards, notifications, presence indicators, stock prices, collaborative editors, and delivery tracking all depend on the UI updating as events happen.
+
+That creates a different frontend problem from ordinary data fetching. Instead of one request that loads data once, the app now needs an update strategy that stays alive over time. The challenge is deciding how “real-time” the product actually needs to be and choosing the right transport for that need.
+
+This topic exists because many teams jump straight to WebSockets when they only needed simple polling, or they keep polling forever when push-based updates would be cleaner. Strong React engineering means understanding the tradeoffs before picking the tool.
+
+## How it works
+
+There are three common realtime strategies in web apps:
+
+- polling
+- Server-Sent Events, often called SSE
+- WebSockets
+
+Polling is the simplest approach. The client asks the server for updates every few seconds. It is easy to implement and often good enough for dashboards, background jobs, or data that only needs to feel “reasonably fresh.” The downside is waste. The client keeps sending requests even when nothing changed.
+
+SSE is a one-way push connection from server to client. The browser opens a long-lived connection, and the server pushes events down as they happen. This works well for activity feeds, notifications, and live status updates where the client mainly listens.
+
+WebSockets are two-way. The client and server keep a persistent connection open, and both sides can send messages at any time. This is often the best fit for chat, multiplayer systems, collaborative editing, and other highly interactive low-latency experiences.
+
+A practical decision guide looks like this:
+
+- use polling when simplicity matters most and frequent freshness is not critical
+- use SSE when the server mainly needs to push updates one-way
+- use WebSockets when the client and server both need to communicate instantly
+
+React itself does not provide these transports. React’s job is to connect incoming events to state updates and clean up subscriptions when components unmount or dependencies change.
+
+That means real-time UI design usually involves a few recurring patterns:
+
+- subscribe when the component becomes active
+- update state when a new event arrives
+- clean up the interval or connection when the component unmounts
+- avoid duplicate listeners across rerenders
+
+Chat UI is a useful example because it makes the differences easy to see. Polling can fetch new messages every few seconds. SSE can stream incoming messages from the server. WebSockets can handle both incoming messages and outgoing typing or send events on the same live connection.
+
+It is also important to think about failure modes. Real-time connections can disconnect, reconnect, duplicate events, or arrive out of order. The UI often needs loading states, reconnect indicators, and stable message keys to handle those realities well.
+
+## Syntax
+
+```tsx
+useEffect(() => {
+  const intervalId = window.setInterval(loadUpdates, 5000)
+  return () => window.clearInterval(intervalId)
+}, [])
+```
+
+## Code examples
+
+### Example 1 — Polling with `setInterval`
+
+This is the simplest real-time pattern.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function LiveOrders() {
+  const [orders, setOrders] = useState<string[]>([])
+
+  useEffect(() => {
+    async function loadOrders() {
+      const response = await fetch('/api/orders')
+      const data = (await response.json()) as string[]
+      setOrders(data)
+    }
+
+    void loadOrders()
+
+    const intervalId = window.setInterval(() => {
+      void loadOrders()
+    }, 5000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  return <ul>{orders.map((order) => <li key={order}>{order}</li>)}</ul>
+}
+```
+
+### Example 2 — Polling only while visible
+
+Sometimes the best optimization is not polling when the tab is hidden.
+
+```tsx
+useEffect(() => {
+  async function refresh() {
+    if (document.hidden) return
+    await loadDashboardData()
+  }
+
+  const intervalId = window.setInterval(() => {
+    void refresh()
+  }, 10000)
+
+  return () => window.clearInterval(intervalId)
+}, [])
+```
+
+### Example 3 — SSE with `EventSource`
+
+SSE is useful for one-way streaming updates.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function NotificationsFeed() {
+  const [events, setEvents] = useState<string[]>([])
+
+  useEffect(() => {
+    const eventSource = new EventSource('/api/notifications/stream')
+
+    eventSource.onmessage = (event) => {
+      setEvents((currentEvents) => [...currentEvents, event.data])
+    }
+
+    return () => {
+      eventSource.close()
+    }
+  }, [])
+
+  return <ul>{events.map((event) => <li key={event}>{event}</li>)}</ul>
+}
+```
+
+### Example 4 — WebSocket connection
+
+WebSockets support two-way communication.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function RealtimeCounter() {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    const socket = new WebSocket('wss://example.com/realtime')
+
+    socket.addEventListener('message', (event) => {
+      const payload = JSON.parse(event.data) as { count: number }
+      setCount(payload.count)
+    })
+
+    return () => {
+      socket.close()
+    }
+  }, [])
+
+  return <p>Live count: {count}</p>
+}
+```
+
+### Example 5 — Sending messages over a WebSocket
+
+This is where WebSockets differ clearly from SSE.
+
+```tsx
+function ChatInput({ socket }: { socket: WebSocket }) {
+  const [message, setMessage] = useState('')
+
+  function handleSend() {
+    socket.send(JSON.stringify({ type: 'chat-message', body: message }))
+    setMessage('')
+  }
+
+  return (
+    <div>
+      <input value={message} onChange={(event) => setMessage(event.target.value)} />
+      <button onClick={handleSend}>Send</button>
+    </div>
+  )
+}
+```
+
+### Example 6 — Chat UI message list pattern
+
+The UI layer needs stable rendering around incoming messages.
+
+```tsx
+type Message = {
+  id: string
+  author: string
+  body: string
+}
+
+function ChatMessages({ messages }: { messages: Message[] }) {
+  return (
+    <ul>
+      {messages.map((message) => (
+        <li key={message.id}>
+          <strong>{message.author}:</strong> {message.body}
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+### Example 7 — Reconnect status UI
+
+Real-time experiences need connection feedback.
+
+```tsx
+type ConnectionStatus = 'connecting' | 'open' | 'closed'
+
+function ConnectionBadge({ status }: { status: ConnectionStatus }) {
+  return <p>Connection status: {status}</p>
+}
+```
+
+### Example 8 — Complete decision comparison
+
+This side-by-side pattern helps teams reason about fit.
+
+```txt
+Polling
+- easiest to implement
+- more requests over time
+- good for low-frequency freshness
+
+SSE
+- one-way server push
+- simpler than WebSockets for feeds
+- good for notifications and event streams
+
+WebSockets
+- two-way communication
+- best for chat and collaborative features
+- more infrastructure and connection management
+```
+
+<LivePreview id="realtime-react" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Choosing WebSockets immediately for every “live” feature.
+**Fix:** Start by asking how often updates happen and whether the client must send live events too.
+**Why:** Polling or SSE may be simpler and more than enough.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting to clean up intervals or connections in effects.
+**Fix:** Always return a cleanup function.
+**Why:** Stale listeners and duplicate connections create memory leaks and duplicate updates.
+</Callout>
+
+<Callout type="tip">
+Polling is not “bad.” For many dashboards and admin tools, it is the most practical choice.
+</Callout>
+
+<Callout type="note">
+Chat UIs are not only about transport choice. They also need good message keys, scroll behavior, reconnect handling, and sometimes optimistic sending states.
+</Callout>
+
+## How this is used in real projects
+
+In real apps, the transport choice usually follows the product requirement rather than engineering fashion. A background job monitor may poll every 15 seconds and work perfectly well. A notification center may use SSE because the server just needs to push events out. A team chat product or live collaboration tool may justify WebSockets because messages, typing indicators, and presence updates all need fast two-way exchange.
+
+The React side stays surprisingly consistent across those options: subscribe, update state, render the latest data, and clean up correctly.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between polling, SSE, and WebSockets?
+**A:** Polling means the client repeatedly asks the server for updates on a timer. SSE means the server pushes one-way updates to the client over a long-lived connection. WebSockets create a two-way persistent connection where both client and server can send messages at any time.
+</Callout>
+
+<Callout type="interview">
+**Q:** When would you choose polling instead of WebSockets?
+**A:** I would choose polling when the update frequency is moderate, the feature is not highly interactive, and simplicity matters more than ultra-low latency. Many dashboards and status screens work well with polling and do not need the complexity of WebSockets.
+</Callout>
+
+<Callout type="interview">
+**Q:** When is SSE a better fit than WebSockets?
+**A:** SSE is a better fit when the server mainly needs to push one-way updates like notifications, feed entries, or status events, and the client does not need a full bidirectional live channel.
+</Callout>
+
+<Callout type="interview">
+**Q:** What should a React component do when opening a real-time connection?
+**A:** It should subscribe when needed, update local state when messages arrive, surface useful connection state to the UI, and clean up the interval, EventSource, or WebSocket when the component unmounts or the subscription changes.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which real-time approach uses a repeated timer to ask the server for updates?"
+  options={["Polling", "SSE", "WebSocket", "Hydration"]}
+  correct={0}
+  explanation="Polling works by having the client repeatedly request the latest data on a schedule."
+/>
+
+<Quiz
+  question="Which approach is one-way from server to client?"
+  options={["Polling", "SSE", "WebSocket", "Cookies"]}
+  correct={1}
+  explanation="Server-Sent Events provide a one-way push stream from the server to the browser."
+/>
+
+<Quiz
+  question="Which transport is usually the best fit for chat or multiplayer features?"
+  options={["Static generation", "Polling", "WebSockets", "Only REST polling"]}
+  correct={2}
+  explanation="WebSockets are usually the best fit when the client and server both need low-latency two-way communication."
+/>
+
+<MarkDone slug="36-realtime-react" track="react" />

@@ -1,0 +1,398 @@
+---
+title: "Advanced rendering concepts"
+description: "Learn how React reconciles UI, how render and commit phases differ, and how batching, transitions, deferred values, and Suspense affect rendering behavior."
+level: "advanced"
+minutes: 14
+stage: "Stage 5 — Real World"
+slug: "24-advanced-rendering"
+track: "react"
+---
+
+## Why this exists
+
+Once you move beyond everyday component patterns, React starts exposing deeper rendering concepts that explain why the UI behaves the way it does. Why does a component preserve state when some things change but lose it when others do not? Why do multiple state updates often produce one render? Why can typing stay responsive while a list update happens slightly later? Why does Suspense show fallback UI at certain times?
+
+This topic exists because advanced rendering concepts connect many earlier topics into one deeper mental model. Reconciliation explains identity. Render and commit phases explain when work is calculated versus applied. Batching explains why several state updates may combine into one render. Transitions and deferred values explain how React can keep urgent updates responsive. Suspense explains how loading boundaries fit into rendering.
+
+These ideas matter because they help you reason about behavior instead of memorizing isolated rules.
+
+## How it works
+
+Reconciliation is the process React uses to compare the previous UI tree with the next UI tree and decide what should change in the real DOM. React does not rebuild the entire DOM from scratch every time. It compares the old and new virtual representations and applies the needed updates efficiently.
+
+The diffing algorithm follows a few practical rules:
+
+- if the element type stays the same, React usually updates it in place
+- if the element type changes, React replaces it
+- keys help React understand identity inside lists
+
+This is why keys matter so much. Keys tell React which list item is which across renders. Good keys preserve state and minimize incorrect remounting. Bad keys, especially unstable indexes in reorderable lists, can cause state to jump to the wrong item or force unnecessary replacements.
+
+React rendering also has two major phases:
+
+- render phase: React calculates what the next UI should look like. This phase must stay pure and can be paused or restarted.
+- commit phase: React applies the calculated changes to the DOM and then runs layout/effect work tied to the commit.
+
+That distinction matters because React may do rendering work without immediately committing it. In modern React, rendering is more flexible than a simple one-shot pipeline.
+
+Batching means React groups multiple state updates into a single render. If you call `setState` several times in one event handler, React usually waits and performs one render with the final result. React 18 extended this idea with automatic batching, so many async situations like `setTimeout` and promise callbacks also batch by default.
+
+Concurrent rendering does not mean JavaScript became multithreaded. JavaScript still runs on one main thread. What changed is that React can pause, resume, or abandon rendering work more intelligently so urgent updates can stay responsive.
+
+`useTransition` lets you mark some state updates as non-urgent. That tells React that a fast urgent update, like keeping an input responsive, matters more than immediately finishing a slower expensive render.
+
+`useDeferredValue` works similarly from the value side. It lets React keep using an older value temporarily while a slower update catches up, which is useful for large filtered lists or heavy search results.
+
+Suspense lets React show fallback UI while some part of the tree is not ready yet. It is often used with lazy-loaded components and modern data-fetching approaches. On the server, related concepts like streaming can send HTML in chunks as pieces become ready.
+
+Strict Mode double rendering in development is also part of this mental model. React may intentionally render or rerun work extra times in development to surface unsafe assumptions. That can feel surprising until you understand that development mode is probing for issues rather than representing production behavior exactly.
+
+## Syntax
+
+```tsx
+const [isPending, startTransition] = useTransition()
+```
+
+## Code examples
+
+### Example 1 — Reconciliation: same type vs different type
+
+Same element type usually means update, different type usually means replace.
+
+```tsx
+import { useState } from 'react'
+
+export default function ReconciliationExample() {
+  const [asHeading, setAsHeading] = useState(true)
+
+  return (
+    <section>
+      <button onClick={() => setAsHeading((value) => !value)}>Toggle type</button>
+      {asHeading ? <h2>Profile title</h2> : <p>Profile title</p>}
+    </section>
+  )
+}
+```
+
+When the type changes from `h2` to `p`, React treats it as a replacement.
+
+### Example 2 — Keys and identity
+
+Stable keys preserve the correct identity across list changes.
+
+```tsx
+function WrongList({ items }: { items: { id: number; name: string }[] }) {
+  return (
+    <ul>
+      {items.map((item, index) => (
+        <li key={index}>{item.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+```tsx
+function RightList({ items }: { items: { id: number; name: string }[] }) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={item.id}>{item.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+The second version gives React stable identity information.
+
+### Example 3 — Batching in one event handler
+
+React groups multiple updates together.
+
+```tsx
+import { useState } from 'react'
+
+export default function BatchingExample() {
+  const [count, setCount] = useState(0)
+
+  function handleClick() {
+    setCount((value) => value + 1)
+    setCount((value) => value + 1)
+  }
+
+  return <button onClick={handleClick}>Count: {count}</button>
+}
+```
+
+React batches those updates into one render and the count increases by 2.
+
+### Example 4 — Automatic batching in React 18
+
+React 18 also batches many async updates by default.
+
+```tsx
+import { useState } from 'react'
+
+export default function AutomaticBatchingExample() {
+  const [count, setCount] = useState(0)
+  const [label, setLabel] = useState('idle')
+
+  function handleAsyncUpdate() {
+    setTimeout(() => {
+      setCount((value) => value + 1)
+      setLabel('updated')
+    }, 500)
+  }
+
+  return (
+    <section>
+      <button onClick={handleAsyncUpdate}>Run async update</button>
+      <p>{count}</p>
+      <p>{label}</p>
+    </section>
+  )
+}
+```
+
+In React 18, these async updates batch too.
+
+### Example 5 — `useTransition`
+
+Transitions tell React some updates are less urgent.
+
+```tsx
+import { useState, useTransition } from 'react'
+
+export default function TransitionExample() {
+  const [input, setInput] = useState('')
+  const [query, setQuery] = useState('')
+  const [isPending, startTransition] = useTransition()
+
+  function handleChange(value: string) {
+    setInput(value)
+
+    startTransition(() => {
+      setQuery(value)
+    })
+  }
+
+  return (
+    <section>
+      <input value={input} onChange={(event) => handleChange(event.target.value)} />
+      <p>{isPending ? 'Updating results...' : `Query: ${query}`}</p>
+    </section>
+  )
+}
+```
+
+### Example 6 — `useDeferredValue`
+
+Deferred values keep urgent input updates responsive.
+
+```tsx
+import { useDeferredValue, useMemo, useState } from 'react'
+
+const items = Array.from({ length: 1000 }, (_, index) => `Item ${index + 1}`)
+
+export default function DeferredFilterExample() {
+  const [query, setQuery] = useState('')
+  const deferredQuery = useDeferredValue(query)
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item) =>
+      item.toLowerCase().includes(deferredQuery.toLowerCase()),
+    )
+  }, [deferredQuery])
+
+  return (
+    <section>
+      <input value={query} onChange={(event) => setQuery(event.target.value)} />
+      <p>Matches: {filteredItems.length}</p>
+    </section>
+  )
+}
+```
+
+The user can keep typing while the slower filtered update trails slightly behind.
+
+### Example 7 — Suspense with a lazy component
+
+Suspense commonly wraps code-split components.
+
+```tsx
+import { Suspense, lazy } from 'react'
+
+const ReportsPanel = lazy(() => import('./ReportsPanel'))
+
+export default function App() {
+  return (
+    <Suspense fallback={<p>Loading reports...</p>}>
+      <ReportsPanel />
+    </Suspense>
+  )
+}
+```
+
+### Example 8 — Suspense with data fetching
+
+Modern data layers can also integrate with Suspense.
+
+```tsx
+import { Suspense } from 'react'
+import { useSuspenseQuery } from '@tanstack/react-query'
+
+function UserProfile() {
+  const query = useSuspenseQuery({
+    queryKey: ['user', 1],
+    queryFn: async () => {
+      const response = await fetch('/api/user/1')
+      return response.json()
+    },
+  })
+
+  return <p>{query.data.name}</p>
+}
+
+export default function App() {
+  return (
+    <Suspense fallback={<p>Loading profile...</p>}>
+      <UserProfile />
+    </Suspense>
+  )
+}
+```
+
+### Example 9 — Complete example: deferred search
+
+This combines the ideas into one responsive search UI.
+
+```tsx
+import { useDeferredValue, useMemo, useState } from 'react'
+
+const users = Array.from({ length: 2000 }, (_, index) => `User ${index + 1}`)
+
+export default function SearchPage() {
+  const [query, setQuery] = useState('')
+  const deferredQuery = useDeferredValue(query)
+
+  const results = useMemo(() => {
+    return users.filter((user) =>
+      user.toLowerCase().includes(deferredQuery.toLowerCase()),
+    )
+  }, [deferredQuery])
+
+  return (
+    <section>
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search users"
+      />
+      <p>Showing {results.length} results</p>
+      <ul>
+        {results.slice(0, 20).map((user) => (
+          <li key={user}>{user}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+<LivePreview id="advanced-rendering" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Thinking reconciliation means React updates the whole DOM from scratch every time.
+**Fix:** Understand that React compares previous and next trees and updates what changed.
+**Why:** Reconciliation is about efficient diffing and identity, not total replacement.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using unstable keys in reorderable lists.
+**Fix:** Use stable IDs from the data whenever possible.
+**Why:** Keys drive identity during reconciliation, and unstable keys can cause state bugs and unnecessary remounts.
+</Callout>
+
+<Callout type="note">
+Concurrent rendering does not mean multi-threaded — JavaScript is still single-threaded.
+</Callout>
+
+<Callout type="tip">
+Use `useTransition` when a state update is slow and you want the UI to stay responsive.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is reconciliation?
+**A:** Reconciliation is the process React uses to compare the previous virtual UI tree with the next one and decide what to update in the real DOM. It uses element types and keys to preserve or replace identity efficiently.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between the render phase and commit phase?
+**A:** The render phase calculates what the next UI should be and must stay pure. The commit phase applies those changes to the DOM and then runs effects tied to the committed result.
+</Callout>
+
+## How this is used in real projects
+
+These concepts show up whenever React apps need to stay responsive under heavier work. Deferred values help search interfaces stay usable. Transitions help distinguish urgent interactions from slower updates. Suspense improves how loading boundaries are expressed. Good keys preserve identity in dynamic lists. Understanding render versus commit explains why effects run when they do and why rendering work can be repeated or paused.
+
+Server-side concepts like streaming build on the same mental model. Even if a team uses a framework to hide some details, React’s rendering behavior still shapes how route loading, fallbacks, and data boundaries behave.
+
+This is why advanced rendering is worth learning. It turns many “React feels weird here” moments into predictable behavior you can reason about.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is reconciliation in React?
+**A:** Reconciliation is React’s process for comparing the old UI tree with the new UI tree and deciding what should update in the real DOM. It uses element type comparisons and keys to preserve identity and minimize unnecessary work.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between the render phase and commit phase?
+**A:** The render phase computes the next UI and can be paused or restarted. The commit phase applies the changes to the DOM and then runs effects. Render is calculation; commit is application.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is automatic batching in React 18?
+**A:** Automatic batching means React groups multiple state updates into one render not only inside event handlers, but also in many async contexts such as timeouts and promise callbacks. This reduces unnecessary renders and improves efficiency.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is `useTransition` and when do you use it?
+**A:** `useTransition` marks an update as non-urgent. You use it when a slower UI update should not block urgent interactions like typing or clicking. It helps React keep the interface responsive while lower-priority work catches up.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is Suspense?
+**A:** Suspense is a React mechanism for showing fallback UI while part of the tree is not ready yet, such as a lazy-loaded component or a supported data-fetching boundary. It lets loading states be expressed as part of the rendering tree itself.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does React use to efficiently update the DOM?"
+  options={[
+    "Reconciliation / Virtual DOM diffing",
+    "Full DOM replacement on every render",
+    "Only browser reloads",
+    "Only CSS transitions"
+  ]}
+  correct={0}
+  explanation="React uses reconciliation to compare the previous and next virtual trees and then update only the necessary parts of the DOM."
+/>
+
+<Quiz
+  question="What does useTransition do?"
+  options={[
+    "Marks a state update as non-urgent so UI stays responsive",
+    "Caches a computed value forever",
+    "Prevents all re-renders",
+    "Loads CSS files lazily"
+  ]}
+  correct={0}
+  explanation="`useTransition` marks slower updates as lower priority so urgent interactions can remain responsive."
+/>
+
+<MarkDone slug="24-advanced-rendering" track="react" />

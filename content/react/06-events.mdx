@@ -1,0 +1,539 @@
+---
+title: "Events in React"
+description: "Learn how React event handlers work, what synthetic events are, how to prevent default behavior, stop bubbling, and handle input, mouse, keyboard, and form events."
+level: "beginner"
+minutes: 9
+stage: "Stage 1 — Foundation"
+slug: "06-events"
+track: "react"
+---
+
+## Why this exists
+
+User interfaces are not just things people look at. They are things people click, type into, hover over, submit, focus, blur, and interact with in many different ways. If your app cannot respond to those interactions, it is not really an application. React events are how components respond to user behavior and turn static UI into interactive UI.
+
+Events matter because almost every useful app feature depends on them. Buttons need click handlers. Forms need submit handlers. Inputs need change handlers. Dropdowns, tabs, modals, menus, and tooltips all rely on event-driven behavior. Understanding events is what lets your components move from "rendering UI" to "handling real user interaction."
+
+## How it works
+
+React uses an event system that looks similar to the browser's native event system, but it wraps native browser events in something called a synthetic event. A synthetic event is a React object that normalizes behavior across browsers so you can use a consistent API. In most day-to-day code, you treat it like an event object with helpful properties such as `target`, `currentTarget`, and methods like `preventDefault()` and `stopPropagation()`.
+
+React event names use camelCase, not lowercase HTML-style names. So you write `onClick`, not `onclick`, and `onMouseEnter`, not `onmouseenter`. The value you pass is a function. That point is important: you pass a function reference like `onClick={handleClick}`, not the result of calling the function like `onClick={handleClick()}`. If you call the function during render, it runs immediately instead of waiting for the event.
+
+The event object contains information about what happened. For example, in an input change handler you often read `event.target.value`. In a checkbox handler you usually read `event.target.checked`. On keyboard events you may inspect `event.key`. On form submits you often call `event.preventDefault()` so the browser does not do its normal full-page form submission behavior.
+
+Events in React also follow bubbling behavior similar to the browser. If you click a child element inside a parent that also has a click handler, both handlers may run because the event bubbles upward. If you want to stop that, you can call `event.stopPropagation()`.
+
+You can write handlers inline for short logic or use named functions for readability and reuse. When you need to pass extra arguments, you usually wrap the call in an arrow function, such as `onClick={() => handleDelete(id)}`. That delays the call until the event actually happens.
+
+React supports many types of events: mouse events like `onClick` and `onMouseEnter`, keyboard events like `onKeyDown`, form events like `onSubmit`, and focus events like `onBlur` and `onFocus`. Pointer events also exist and are useful when you want a more unified model across mouse, touch, and pen input.
+
+Finally, input events behave a little differently in controlled and uncontrolled components. In a controlled input, React state owns the value and `onChange` updates that state. In an uncontrolled input, the DOM owns the current value and you usually read it from a ref or the submitted form. Controlled inputs are usually easier to reason about in React because the UI and state stay in sync.
+
+## Syntax
+
+```tsx
+function SaveButton() {
+  function handleClick() {
+    console.log('Saved')
+  }
+
+  return <button onClick={handleClick}>Save</button>
+}
+```
+
+## Code examples
+
+### Example 1 — Basic `onClick`
+
+The simplest React event example is a button click handler.
+
+```tsx
+export default function App() {
+  function handleClick() {
+    console.log('Button clicked')
+  }
+
+  return <button onClick={handleClick}>Click me</button>
+}
+```
+
+The key idea is that `onClick` receives a function to run later when the user clicks.
+
+### Example 2 — Common mistake: calling the function immediately
+
+This is one of the most common beginner mistakes in React.
+
+```tsx
+export default function App() {
+  function handleClick() {
+    console.log('Clicked')
+  }
+
+  return (
+    <>
+      <button onClick={handleClick}>Correct</button>
+      <button onClick={handleClick()}>Wrong</button>
+    </>
+  )
+}
+```
+
+`onClick={handleClick}` is correct because it passes the function. `onClick={handleClick()}` is wrong because it calls the function during render instead of on click.
+
+### Example 3 — Inline arrow function handler
+
+Small handlers are sometimes fine inline.
+
+```tsx
+export default function App() {
+  return (
+    <button onClick={() => console.log('Inline click handler')}>
+      Save
+    </button>
+  )
+}
+```
+
+Inline handlers are convenient for short logic, but long logic is usually easier to read in a named function.
+
+### Example 4 — Named handler function
+
+Named handlers keep JSX cleaner when the logic is more than one short expression.
+
+```tsx
+export default function App() {
+  function handleSaveClick() {
+    console.log('Saving data...')
+  }
+
+  return <button onClick={handleSaveClick}>Save</button>
+}
+```
+
+This pattern usually scales better because the JSX stays easier to scan.
+
+### Example 5 — Accessing the event object
+
+Many handlers need data from the event itself.
+
+```tsx
+export default function App() {
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    console.log(event.target.value)
+  }
+
+  return <input onChange={handleChange} placeholder="Type here" />
+}
+```
+
+Here `event.target.value` gives you the current text inside the input.
+
+### Example 6 — Preventing form submission default
+
+The browser normally reloads the page when a form submits. React apps usually prevent that behavior.
+
+```tsx
+export default function App() {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    console.log('Form submitted without page reload')
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="email" />
+      <button type="submit">Submit</button>
+    </form>
+  )
+}
+```
+
+`event.preventDefault()` stops the browser's default submit behavior so your React app can handle the submit itself.
+
+### Example 7 — Passing arguments with an arrow function wrapper
+
+When you need to pass an extra value, wrap the call in an arrow function.
+
+```tsx
+type Todo = {
+  id: number
+  text: string
+}
+
+export default function App() {
+  const todos: Todo[] = [
+    { id: 1, text: 'Review claim' },
+    { id: 2, text: 'Send email' },
+  ]
+
+  function handleDelete(id: number) {
+    console.log('Delete todo', id)
+  }
+
+  return (
+    <ul>
+      {todos.map((todo) => (
+        <li key={todo.id}>
+          {todo.text}
+          <button onClick={() => handleDelete(todo.id)}>Delete</button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+If you wrote `onClick={handleDelete(todo.id)}`, the function would run immediately during render instead of on click.
+
+### Example 8 — `onMouseEnter` and `onMouseLeave`
+
+Mouse events are useful for hover-driven UI.
+
+```tsx
+import { useState } from 'react'
+
+export default function App() {
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {hovered ? 'Mouse is here' : 'Hover over me'}
+    </div>
+  )
+}
+```
+
+These handlers let you react to hover state without manually attaching DOM listeners yourself.
+
+### Example 9 — `onKeyDown` for Enter key detection
+
+Keyboard events are useful for shortcuts and form-like interactions.
+
+```tsx
+export default function App() {
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      console.log('Enter pressed')
+    }
+  }
+
+  return <input onKeyDown={handleKeyDown} placeholder="Press Enter" />
+}
+```
+
+`onKeyDown` fires when a key is pressed. Checking `event.key` lets you respond to specific keys.
+
+### Example 10 — `onChange` on a text input
+
+Text inputs use `onChange` to react to user typing.
+
+```tsx
+import { useState } from 'react'
+
+export default function App() {
+  const [name, setName] = useState('')
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    setName(event.target.value)
+  }
+
+  return (
+    <section>
+      <input value={name} onChange={handleChange} />
+      <p>Hello, {name || 'friend'}.</p>
+    </section>
+  )
+}
+```
+
+This is the standard controlled input pattern: state owns the input value, and `onChange` updates that state.
+
+### Example 11 — `onBlur` for validation
+
+`onBlur` fires when an element loses focus.
+
+```tsx
+import { useState } from 'react'
+
+export default function App() {
+  const [error, setError] = useState('')
+
+  function handleBlur(event: React.FocusEvent<HTMLInputElement>) {
+    if (event.target.value.trim() === '') {
+      setError('Name is required')
+      return
+    }
+
+    setError('')
+  }
+
+  return (
+    <section>
+      <input onBlur={handleBlur} placeholder="Name" />
+      {error ? <p>{error}</p> : null}
+    </section>
+  )
+}
+```
+
+`onBlur` is often used to validate fields after the user leaves them.
+
+### Example 12 — `onFocus` to highlight input
+
+`onFocus` fires when an element receives focus.
+
+```tsx
+import { useState } from 'react'
+
+export default function App() {
+  const [focused, setFocused] = useState(false)
+
+  return (
+    <input
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={{
+        outline: focused ? '2px solid blue' : '1px solid gray',
+      }}
+      placeholder="Focus me"
+    />
+  )
+}
+```
+
+Focus events are useful for visual feedback and accessibility-friendly UI patterns.
+
+### Example 13 — Event bubbling and `stopPropagation`
+
+Events can bubble from a child element to a parent.
+
+```tsx
+export default function App() {
+  function handleParentClick() {
+    console.log('Parent clicked')
+  }
+
+  function handleChildClick(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    console.log('Child clicked')
+  }
+
+  return (
+    <div onClick={handleParentClick}>
+      <button onClick={handleChildClick}>Click child</button>
+    </div>
+  )
+}
+```
+
+Without `stopPropagation()`, clicking the button would trigger both the button handler and the parent `div` handler.
+
+### Example 14 — `onDoubleClick`
+
+React also supports double-click interactions.
+
+```tsx
+export default function App() {
+  function handleDoubleClick() {
+    console.log('Double clicked')
+  }
+
+  return <p onDoubleClick={handleDoubleClick}>Double-click this text</p>
+}
+```
+
+`onDoubleClick` is less common than `onClick`, but it is available when the UI needs that behavior.
+
+### Example 15 — A complete form with multiple event types
+
+This example combines submit, change, focus, blur, keyboard, and click behavior.
+
+```tsx
+import { useState } from 'react'
+
+export default function App() {
+  const [form, setForm] = useState({
+    email: '',
+    message: '',
+  })
+  const [error, setError] = useState('')
+  const [focusedField, setFocusedField] = useState('')
+
+  function handleChange(
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    const { name, value } = event.target
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  function handleBlur(
+    event: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    if (event.target.name === 'email' && event.target.value.trim() === '') {
+      setError('Email is required')
+      return
+    }
+
+    setError('')
+  }
+
+  function handleFocus(
+    event: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    setFocusedField(event.target.name)
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && event.shiftKey) {
+      console.log('Shift + Enter pressed inside textarea')
+    }
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    console.log('Submitted form', form)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        name="email"
+        value={form.email}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onFocus={handleFocus}
+        placeholder="Email"
+        data-focused={focusedField === 'email'}
+      />
+
+      <textarea
+        name="message"
+        value={form.message}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onFocus={handleFocus}
+        onKeyDown={handleKeyDown}
+        placeholder="Message"
+        data-focused={focusedField === 'message'}
+      />
+
+      {error ? <p>{error}</p> : null}
+
+      <button type="submit">Send</button>
+    </form>
+  )
+}
+```
+
+This is much closer to real application code because multiple event types work together in one form.
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Writing `onClick={handleClick()}`.
+**Fix:** Write `onClick={handleClick}`.
+**Why:** Calling the function during render runs it immediately instead of waiting for the event.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting `event.preventDefault()` on form submit.
+**Fix:** Call `event.preventDefault()` inside the submit handler when you want React to handle the form.
+**Why:** Without it, the browser performs its default full-page form submission behavior and usually reloads the page.
+</Callout>
+
+<Callout type="tip">
+When passing arguments, use `() => handleDelete(id)` instead of `handleDelete(id)`. The arrow function delays the call until the event actually happens.
+</Callout>
+
+<Callout type="note">
+React synthetic events wrap native browser events to give you a more consistent cross-browser API. In normal app code, you usually just work with the React event object.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is event bubbling and how do you stop it?
+**A:** Event bubbling means an event that starts on a child element can move upward through its parent elements. For example, clicking a button inside a card may also trigger the card's click handler if both listen for clicks. In React, you stop that by calling `event.stopPropagation()`. This prevents the event from continuing up the tree.
+</Callout>
+
+## How this is used in real projects
+
+In real applications, events are everywhere because almost every user action depends on them. Search inputs react to typing. Buttons trigger saves, deletes, and navigation. Dropdowns open on click, close on blur, and update filters on change. Forms rely on submit, change, focus, and blur together. A screen may look static in a design file, but in the product it becomes interactive through event handlers.
+
+Teams also rely on consistent event patterns to avoid bugs. Accidentally calling a handler during render instead of passing it can trigger actions too early. Forgetting `preventDefault()` can reload the page at the wrong time. Not understanding bubbling can cause parent and child actions to fire together unexpectedly. These are not rare edge cases. They are common frontend bugs in production apps.
+
+React's event system helps organize these interactions in a predictable way. By keeping event logic inside components and attaching handlers directly in JSX, the relationship between UI and behavior stays clear. That makes the code easier to debug and easier to maintain.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is a synthetic event in React?
+**A:** A synthetic event is React's wrapper around the native browser event object. React uses it to provide a more consistent event API across browsers. In practice, you still access familiar things like `target`, `currentTarget`, `preventDefault()`, and `stopPropagation()`. The main benefit is that React standardizes the event interface so your code behaves more predictably.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `onClick={handleClick}` and `onClick={handleClick()}`?
+**A:** `onClick={handleClick}` passes the function reference, which means React will call it later when the click actually happens. `onClick={handleClick()}` calls the function immediately during render and passes its result instead. That is almost always a bug unless the function returns another function. In normal React code, you usually want to pass the function, not call it.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is event bubbling and how do you stop it in React?
+**A:** Event bubbling means an event fired on a child element can continue upward to parent elements that are listening for the same event. For example, clicking a button inside a clickable card may trigger both handlers. In React, you stop bubbling by calling `event.stopPropagation()`. This prevents the event from continuing up to ancestor handlers.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you pass arguments to an event handler?
+**A:** The standard pattern is to wrap the call in an arrow function, such as `onClick={() => handleDelete(id)}`. This creates a function that React can call later when the event happens. If you wrote `onClick={handleDelete(id)}`, the function would run immediately during render instead. The wrapper delays execution until the interaction actually occurs.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does `event.preventDefault()` do?
+**A:** `event.preventDefault()` stops the browser's default action for that event. A common example is preventing a form submission from reloading the page so the React app can handle the submit in JavaScript. It does not stop the event from bubbling; that is what `stopPropagation()` is for. It only stops the browser's normal default behavior.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is wrong with `onClick={handleClick()}`?"
+  options={[
+    "It only works in class components",
+    "It calls the function immediately during render",
+    "It stops the event from bubbling",
+    "It prevents default browser behavior"
+  ]}
+  correct={1}
+  explanation="`handleClick()` runs immediately during render. React event props usually need a function reference like `handleClick`, not the result of calling that function."
+/>
+
+<Quiz
+  question="How do you stop an event from bubbling up?"
+  options={[
+    "event.preventDefault()",
+    "event.stopPropagation()",
+    "event.stop()",
+    "return false"
+  ]}
+  correct={1}
+  explanation="`event.stopPropagation()` stops the event from continuing upward to parent elements."
+/>
+
+<Quiz
+  question="Which event fires when an input value changes?"
+  options={[
+    "onSubmit",
+    "onFocus",
+    "onChange",
+    "onMouseEnter"
+  ]}
+  correct={2}
+  explanation="`onChange` is the standard event for reacting to input value changes in React."
+/>
+
+<MarkDone slug="06-events" track="react" />
+<LivePreview id="events-playground" />

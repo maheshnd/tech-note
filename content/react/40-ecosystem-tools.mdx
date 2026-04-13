@@ -1,0 +1,350 @@
+---
+title: "React ecosystem tools"
+description: "Learn the most important tools around modern React work: Vite, ESLint, Prettier, Storybook, DevTools, TanStack Query, React Hook Form, Zod, Zustand, and Framer Motion."
+level: "intermediate"
+minutes: 10
+stage: "Stage 6 — Advanced"
+slug: "40-ecosystem-tools"
+track: "react"
+---
+
+## Why this exists
+
+React by itself is only part of the real developer workflow. Building, debugging, formatting, validating, testing, data fetching, state management, motion, and component documentation all rely on tools around React, not inside React.
+
+This topic exists because strong React engineering is partly about tool choice. The best teams do not add libraries randomly. They understand what problem each tool solves, when it is helpful, and when plain React is still enough.
+
+The goal here is not to memorize every package in the ecosystem. It is to recognize the major tool categories and why they matter in real projects.
+
+## How it works
+
+Vite is a fast build tool and development server that many React projects use because startup and refresh times are excellent. It helps developers stay fast during local work.
+
+ESLint catches problems and consistency issues in code before they become bugs or messy patterns. Prettier handles formatting so teams do not waste energy debating style in code review.
+
+Storybook gives teams a way to develop and review components in isolation. This is especially useful for design systems, reusable UI primitives, and team collaboration around component states.
+
+React DevTools helps inspect components, props, hooks, and performance. The Profiler view is especially useful when tracking rerender problems.
+
+TanStack Query solves a different problem than local React state. It focuses on server state: fetching, caching, refetching, background refresh, stale data, loading states, and mutations. It often leads to much cleaner client-side data fetching than raw `useEffect`.
+
+React Hook Form focuses on efficient form state management. It keeps forms lighter and easier to manage, especially when many fields and validations are involved.
+
+Zod provides schema validation and type inference. It is often paired with React Hook Form so the same schema can define field validation rules and TypeScript types.
+
+Zustand is a lightweight state management library for shared client state. It is often chosen when teams want something simpler than Redux Toolkit for app-level state.
+
+Framer Motion helps build animation and transition patterns in React without hand-coding every motion detail from scratch.
+
+The real pattern here is that different tools serve different layers:
+
+- developer workflow tools
+- debugging tools
+- server state tools
+- form tools
+- client state tools
+- motion and presentation tools
+
+Choosing well means using a tool when its problem is real, not just because it is popular.
+
+## Syntax
+
+```tsx
+const { data, isLoading } = useQuery({
+  queryKey: ['lessons'],
+  queryFn: getLessons,
+})
+```
+
+## Code examples
+
+### Example 1 — Vite project setup
+
+Vite is a common modern React starting point.
+
+```bash
+npm create vite@latest my-react-app -- --template react-ts
+cd my-react-app
+npm install
+npm run dev
+```
+
+### Example 2 — ESLint in practice
+
+Linting catches issues before runtime.
+
+```ts
+function Example() {
+  const unusedValue = 42
+  return <p>Hello</p>
+}
+```
+
+An ESLint rule can flag `unusedValue` immediately.
+
+### Example 3 — Prettier for formatting consistency
+
+Formatting should be automatic, not a team debate.
+
+```json
+{
+  "singleQuote": true,
+  "semi": false
+}
+```
+
+### Example 4 — Storybook story example
+
+Storybook helps isolate and review components.
+
+```tsx
+import type { Meta, StoryObj } from '@storybook/react'
+import { Button } from './Button'
+
+const meta: Meta<typeof Button> = {
+  title: 'UI/Button',
+  component: Button,
+}
+
+export default meta
+
+type Story = StoryObj<typeof Button>
+
+export const Primary: Story = {
+  args: {
+    children: 'Save changes',
+  },
+}
+```
+
+### Example 5 — React DevTools mental model
+
+Profiler and component inspection are usually what matter most.
+
+```txt
+React DevTools helps with:
+- inspecting props and hooks
+- seeing component tree structure
+- profiling rerenders and slow updates
+```
+
+### Example 6 — TanStack Query basic usage
+
+This is a cleaner pattern for client-side server state.
+
+```tsx
+import { useQuery } from '@tanstack/react-query'
+
+function LessonsList() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['lessons'],
+    queryFn: async () => {
+      const response = await fetch('/api/lessons')
+      return response.json() as Promise<{ id: number; title: string }[]>
+    },
+  })
+
+  if (isLoading) return <p>Loading...</p>
+  if (error) return <p>Could not load lessons.</p>
+
+  return <ul>{data?.map((lesson) => <li key={lesson.id}>{lesson.title}</li>)}</ul>
+}
+```
+
+### Example 7 — React Hook Form basic usage
+
+RHF reduces manual form wiring.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type FormValues = {
+  email: string
+}
+
+function SignupForm() {
+  const { register, handleSubmit } = useForm<FormValues>()
+
+  function onSubmit(values: FormValues) {
+    console.log(values)
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input {...register('email')} />
+      <button type="submit">Submit</button>
+    </form>
+  )
+}
+```
+
+### Example 8 — Zod with React Hook Form
+
+Validation and types can come from one schema.
+
+```tsx
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+
+const schema = z.object({
+  email: z.string().email(),
+})
+
+type FormValues = z.infer<typeof schema>
+
+function SignupForm() {
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+  })
+
+  return <form>{/* fields here */}</form>
+}
+```
+
+### Example 9 — Zustand basic store
+
+This is the lightweight shared-state path.
+
+```tsx
+import { create } from 'zustand'
+
+type ThemeStore = {
+  darkMode: boolean
+  toggle: () => void
+}
+
+const useThemeStore = create<ThemeStore>((set) => ({
+  darkMode: false,
+  toggle: () => set((state) => ({ darkMode: !state.darkMode })),
+}))
+```
+
+### Example 10 — Framer Motion example
+
+Animation becomes declarative instead of fully manual.
+
+```tsx
+import { motion } from 'framer-motion'
+
+function FadeInCard() {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      Hello
+    </motion.div>
+  )
+}
+```
+
+### Example 11 — Tool choice mental model
+
+The right tool depends on the problem.
+
+```txt
+Need better client-side server-state caching?
+- TanStack Query
+
+Need reusable validated forms?
+- React Hook Form + Zod
+
+Need lightweight shared app state?
+- Zustand
+
+Need motion and transitions?
+- Framer Motion
+```
+
+<LivePreview id="ecosystem-tools" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Adding libraries because they are popular, not because the problem exists.
+**Fix:** Choose tools based on the actual pain point.
+**Why:** Every dependency adds learning cost, maintenance cost, and upgrade surface area.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using local React state for complex server-state workflows.
+**Fix:** Consider a server-state tool like TanStack Query when caching, invalidation, and refetching become important.
+**Why:** Server state behaves differently from local UI state.
+</Callout>
+
+<Callout type="tip">
+ESLint and Prettier solve different problems. ESLint catches code issues and unsafe patterns. Prettier handles formatting.
+</Callout>
+
+<Callout type="note">
+Storybook is not only for design systems. It is useful any time teams want isolated component development and shared visual review.
+</Callout>
+
+## How this is used in real projects
+
+Real teams usually settle into a tool stack over time. A common combination might look like this:
+
+- Vite for development speed
+- ESLint and Prettier for code quality and consistency
+- React DevTools for debugging
+- TanStack Query for server state
+- React Hook Form plus Zod for validated forms
+- Zustand for lightweight shared app state
+- Framer Motion for polished transitions
+
+The exact stack varies, but the principle stays the same: tools should reduce complexity, not add decorative complexity.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** When would you use TanStack Query instead of `useEffect` for data fetching?
+**A:** I would use TanStack Query when the app needs structured caching, background refetching, stale data handling, retries, mutations, and a more complete server-state model. Raw `useEffect` works for simple cases, but it gets repetitive quickly when real data workflows grow.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why do teams use React Hook Form with Zod?
+**A:** React Hook Form helps manage form state efficiently, and Zod provides schema-based validation with TypeScript inference. Together they make large forms easier to validate, type, and maintain.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between ESLint and Prettier?
+**A:** ESLint focuses on code quality rules and unsafe or inconsistent patterns. Prettier focuses on automatic formatting. They are complementary, not interchangeable.
+</Callout>
+
+<Callout type="interview">
+**Q:** When is Zustand a good fit?
+**A:** Zustand is a good fit when the app needs shared client state and the team wants something lighter and less ceremony-heavy than Redux Toolkit. It is especially useful for medium-complexity app state that is broader than local component state but does not need a very heavy architecture.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which tool is mainly focused on server-state caching and refetching?"
+  options={["TanStack Query", "Prettier", "Framer Motion", "Storybook"]}
+  correct={0}
+  explanation="TanStack Query is specifically designed to manage server state, including caching, background refetching, and invalidation."
+/>
+
+<Quiz
+  question="Which pair is commonly used for validated forms with schema inference?"
+  options={[
+    "React Hook Form and Zod",
+    "Vite and Storybook",
+    "Prettier and Zustand",
+    "Framer Motion and ESLint"
+  ]}
+  correct={0}
+  explanation="React Hook Form manages form state efficiently, and Zod provides schema validation plus TypeScript inference."
+/>
+
+<Quiz
+  question="What does Storybook mainly help with?"
+  options={[
+    "Building and reviewing components in isolation",
+    "Replacing React Router",
+    "Managing SQL queries",
+    "Deploying production apps automatically"
+  ]}
+  correct={0}
+  explanation="Storybook is mainly used to build, inspect, and review components in isolation from the full application."
+/>
+
+<MarkDone slug="40-ecosystem-tools" track="react" />

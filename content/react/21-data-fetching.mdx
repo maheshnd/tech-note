@@ -1,0 +1,659 @@
+---
+title: "Data fetching"
+description: "Learn the classic useEffect fetch pattern, why it breaks down in real apps, and how TanStack Query solves caching, retries, mutations, optimistic updates, and invalidation."
+level: "intermediate"
+minutes: 14
+stage: "Stage 4 — Intermediate"
+slug: "21-data-fetching"
+track: "react"
+---
+
+## Why this exists
+
+Most real React applications need data from somewhere else: APIs, databases, CMS systems, or backend services. The UI cannot render useful content until that data arrives, and once it arrives, the app has to keep it fresh, handle errors, refetch when needed, and update the screen after mutations. That sounds simple at first, but data fetching becomes one of the most complex parts of frontend work very quickly.
+
+This topic exists because there is a big difference between the basic "fetch inside `useEffect`" pattern and production-grade server-state management. The basic pattern is important to understand because it teaches loading, error, and cleanup fundamentals. But real apps usually need more: caching, deduplication, retries, background refetching, invalidation, optimistic updates, pagination, and mutation tracking. That is why libraries like TanStack Query exist.
+
+If you understand both the basic pattern and why it stops scaling, you can make much better decisions about data architecture in React.
+
+## How it works
+
+The browser provides the Fetch API as the native way to make HTTP requests. In the simplest React version, a component stores three pieces of state:
+
+- loading
+- error
+- data
+
+Then it starts a request inside `useEffect`, updates those states as the request progresses, and renders different UI for each state.
+
+That pattern works for small demos, but it has real limitations:
+
+- duplicated loading and error logic in many components
+- no built-in caching
+- easy waterfalls, where one fetch waits for another render before starting
+- race conditions, where older requests resolve after newer ones and overwrite fresh data
+- manual retry logic
+- manual refetching after mutations
+
+Race conditions are especially important. If the user changes a search query quickly, you may start several requests in parallel. The request for `"rea"` might finish after the request for `"react"`, and without protection, the older result can wrongly replace the newer result. Cleanup and `AbortController` help solve this.
+
+This is where TanStack Query, often still called React Query, becomes valuable. It treats server data as server state rather than ordinary component state. That distinction matters:
+
+- Client state is state your app owns directly, like open tabs or selected filters.
+- Server state comes from an external source and has its own lifecycle: loading, stale data, refetching, retries, caching, and invalidation.
+
+TanStack Query gives you a higher-level model for server state through a few core concepts:
+
+- queries: reading data
+- mutations: changing data on the server
+- query keys: stable identifiers for cached query results
+
+Query keys matter a lot. They are like dependency arrays for server data. If a query depends on `userId`, page number, or filter, the query key should include those values so the cache knows which result belongs to which inputs.
+
+TanStack Query also adds:
+
+- caching so repeated reads can reuse data
+- `staleTime` to control how long data is considered fresh
+- `gcTime` to control how long unused cached data stays in memory
+- background refetching to keep data updated automatically
+- retries for transient failures
+- invalidation after mutations so stale lists refetch
+- optimistic updates so the UI feels instant before the server confirms
+
+This is why production React apps often use React Query instead of raw `useEffect` fetching. It solves the hard server-state problems that developers otherwise rewrite badly in many components.
+
+## Syntax
+
+```tsx
+const { data, isLoading, error } = useQuery({
+  queryKey: ['users'],
+  queryFn: fetchUsers,
+})
+```
+
+## Code examples
+
+### Example 1 — Basic fetch in `useEffect`
+
+This is the classic pattern every React developer should understand.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+type User = {
+  id: number
+  name: string
+}
+
+export default function UserList() {
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadUsers() {
+      try {
+        setLoading(true)
+        setError('')
+
+        const response = await fetch('https://jsonplaceholder.typicode.com/users')
+
+        if (!response.ok) {
+          throw new Error('Request failed')
+        }
+
+        const data = (await response.json()) as User[]
+        setUsers(data)
+      } catch {
+        setError('Could not load users')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void loadUsers()
+  }, [])
+
+  if (loading) return <p>Loading users...</p>
+  if (error) return <p>{error}</p>
+
+  return (
+    <ul>
+      {users.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+### Example 2 — Race condition with multiple fetches
+
+This is the classic problem when user input changes quickly.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export default function SearchResults() {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<string[]>([])
+
+  useEffect(() => {
+    async function search() {
+      const response = await fetch(`/api/search?q=${query}`)
+      const data = (await response.json()) as string[]
+      setResults(data)
+    }
+
+    if (query) {
+      void search()
+    }
+  }, [query])
+}
+```
+
+If the user types quickly, an older request can finish after a newer one and overwrite the newer result.
+
+### Example 3 — `AbortController` cleanup
+
+This is the safer raw fetch pattern.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export default function SafeSearch() {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<string[]>([])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function search() {
+      try {
+        const response = await fetch(`/api/search?q=${query}`, {
+          signal: controller.signal,
+        })
+        const data = (await response.json()) as string[]
+        setResults(data)
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return
+      }
+    }
+
+    if (query) {
+      void search()
+    }
+
+    return () => {
+      controller.abort()
+    }
+  }, [query])
+}
+```
+
+Aborting on cleanup helps prevent stale requests from winning the race.
+
+### Example 4 — The same fetch with React Query
+
+This is the big simplicity gain.
+
+```tsx
+import { useQuery } from '@tanstack/react-query'
+
+async function fetchUsers() {
+  const response = await fetch('https://jsonplaceholder.typicode.com/users')
+
+  if (!response.ok) {
+    throw new Error('Request failed')
+  }
+
+  return response.json()
+}
+
+function UserList() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['users'],
+    queryFn: fetchUsers,
+  })
+
+  if (isLoading) return <p>Loading users...</p>
+  if (error) return <p>Could not load users</p>
+
+  return (
+    <ul>
+      {data.map((user: { id: number; name: string }) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+You get caching and many server-state features automatically instead of rebuilding them by hand.
+
+### Example 5 — `useQuery` basic data fetching
+
+This is the standard React Query read pattern.
+
+```tsx
+import { useQuery } from '@tanstack/react-query'
+
+function Products() {
+  const query = useQuery({
+    queryKey: ['products'],
+    queryFn: async () => {
+      const response = await fetch('/api/products')
+      return response.json()
+    },
+  })
+
+  if (query.isLoading) return <p>Loading...</p>
+  if (query.isError) return <p>Error loading products.</p>
+
+  return <pre>{JSON.stringify(query.data, null, 2)}</pre>
+}
+```
+
+### Example 6 — Query keys
+
+Query keys should include everything the request depends on.
+
+```tsx
+import { useQuery } from '@tanstack/react-query'
+
+function UserProjects({
+  userId,
+  page,
+}: {
+  userId: number
+  page: number
+}) {
+  const query = useQuery({
+    queryKey: ['projects', userId, page],
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${userId}/projects?page=${page}`)
+      return response.json()
+    },
+  })
+
+  return <pre>{JSON.stringify(query.data, null, 2)}</pre>
+}
+```
+
+If the query depends on `userId` and `page`, both belong in the key.
+
+### Example 7 — Dependent queries
+
+Sometimes one query must wait for another to succeed first.
+
+```tsx
+import { useQuery } from '@tanstack/react-query'
+
+function UserAndProjects({ email }: { email: string }) {
+  const userQuery = useQuery({
+    queryKey: ['user', email],
+    queryFn: async () => {
+      const response = await fetch(`/api/users?email=${email}`)
+      return response.json()
+    },
+  })
+
+  const projectsQuery = useQuery({
+    queryKey: ['projects', userQuery.data?.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/users/${userQuery.data.id}/projects`)
+      return response.json()
+    },
+    enabled: Boolean(userQuery.data?.id),
+  })
+}
+```
+
+The second query is enabled only after the first query has the ID it needs.
+
+### Example 8 — `useMutation`
+
+Mutations are for POST, PUT, PATCH, and DELETE operations.
+
+```tsx
+import { useMutation } from '@tanstack/react-query'
+
+function AddTodoButton() {
+  const mutation = useMutation({
+    mutationFn: async (title: string) => {
+      const response = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+
+      return response.json()
+    },
+  })
+
+  return (
+    <button onClick={() => mutation.mutate('Learn React Query')}>
+      Add todo
+    </button>
+  )
+}
+```
+
+### Example 9 — Query invalidation after mutation
+
+After changing server data, refetch related queries.
+
+```tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+function AddTodoButton() {
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: async (title: string) => {
+      const response = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+    },
+  })
+}
+```
+
+Invalidation tells React Query that the related data is now stale and should refetch.
+
+### Example 10 — Optimistic update
+
+Optimistic updates make the UI feel instant.
+
+```tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+function AddTodoOptimistically() {
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: async (title: string) => {
+      const response = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+
+      return response.json()
+    },
+    onMutate: async (title) => {
+      await queryClient.cancelQueries({ queryKey: ['todos'] })
+
+      const previousTodos = queryClient.getQueryData<{ id: number; title: string }[]>(['todos']) ?? []
+
+      queryClient.setQueryData(['todos'], [
+        ...previousTodos,
+        { id: Date.now(), title },
+      ])
+
+      return { previousTodos }
+    },
+    onError: (_error, _title, context) => {
+      queryClient.setQueryData(['todos'], context?.previousTodos ?? [])
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+    },
+  })
+}
+```
+
+The UI updates before the server confirms, then rolls back if the mutation fails.
+
+### Example 11 — Pagination
+
+Page-based pagination can live in the query key.
+
+```tsx
+import { useQuery } from '@tanstack/react-query'
+
+function PaginatedPosts({ page }: { page: number }) {
+  const query = useQuery({
+    queryKey: ['posts', page],
+    queryFn: async () => {
+      const response = await fetch(`/api/posts?page=${page}`)
+      return response.json()
+    },
+  })
+}
+```
+
+### Example 12 — Infinite scroll with `useInfiniteQuery`
+
+This is React Query’s infinite-loading pattern.
+
+```tsx
+import { useInfiniteQuery } from '@tanstack/react-query'
+
+function InfinitePosts() {
+  const query = useInfiniteQuery({
+    queryKey: ['posts'],
+    queryFn: async ({ pageParam = 1 }) => {
+      const response = await fetch(`/api/posts?page=${pageParam}`)
+      return response.json()
+    },
+    getNextPageParam: (lastPage) => lastPage.nextPage ?? undefined,
+    initialPageParam: 1,
+  })
+}
+```
+
+### Example 13 — Global error handling
+
+React Query supports query-level and client-level error strategies.
+
+```tsx
+import { QueryClient } from '@tanstack/react-query'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      staleTime: 30_000,
+    },
+  },
+})
+```
+
+You can also centralize error messaging in query client configuration or wrappers.
+
+### Example 14 — Prefetching
+
+Prefetching loads likely-needed data before the user lands on the page.
+
+```tsx
+import { useQueryClient } from '@tanstack/react-query'
+
+function UserLink({ id }: { id: number }) {
+  const queryClient = useQueryClient()
+
+  async function prefetchUser() {
+    await queryClient.prefetchQuery({
+      queryKey: ['user', id],
+      queryFn: async () => {
+        const response = await fetch(`/api/users/${id}`)
+        return response.json()
+      },
+    })
+  }
+
+  return <button onMouseEnter={prefetchUser}>Open user</button>
+}
+```
+
+### Example 15 — Complete CRUD list with React Query
+
+This combines list fetching, add, edit, delete, and invalidation.
+
+```tsx
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+
+function TodoCrudApp() {
+  const queryClient = useQueryClient()
+
+  const todosQuery = useQuery({
+    queryKey: ['todos'],
+    queryFn: async () => {
+      const response = await fetch('/api/todos')
+      return response.json()
+    },
+  })
+
+  const addTodo = useMutation({
+    mutationFn: async (title: string) => {
+      const response = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+    },
+  })
+
+  const deleteTodo = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/todos/${id}`, { method: 'DELETE' })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+    },
+  })
+
+  if (todosQuery.isLoading) return <p>Loading todos...</p>
+  if (todosQuery.isError) return <p>Could not load todos.</p>
+
+  return (
+    <section>
+      <button onClick={() => addTodo.mutate('New todo')}>Add</button>
+      <ul>
+        {todosQuery.data.map((todo: { id: number; title: string }) => (
+          <li key={todo.id}>
+            {todo.title}
+            <button onClick={() => deleteTodo.mutate(todo.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+<LivePreview id="data-fetching" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Treating server data the same as local UI state.
+**Fix:** Think of server state as data with loading, staleness, retries, and caching concerns.
+**Why:** Server state has a lifecycle controlled partly by an external system, not just by your component.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Ignoring race conditions when fetching in `useEffect`.
+**Fix:** Use `AbortController` or a library like React Query.
+**Why:** Without protection, older requests can overwrite newer results.
+</Callout>
+
+<Callout type="tip">
+Use React Query instead of raw `useEffect` for data fetching in real apps.
+</Callout>
+
+<Callout type="tip">
+Query keys are like dependency arrays — include everything the query depends on.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between server state and client state?
+**A:** Client state is data your UI owns directly, like tabs, modals, and local form values. Server state comes from an external source and has to deal with fetching, caching, staleness, retries, invalidation, and synchronization with the backend.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is an optimistic update?
+**A:** An optimistic update changes the UI before the server confirms the mutation. If the request succeeds, the UI feels instant. If the request fails, the UI should roll back to the previous state.
+</Callout>
+
+<Callout type="warning">
+Never ignore the race condition problem in `useEffect` fetching.
+</Callout>
+
+## How this is used in real projects
+
+Real React apps usually outgrow raw `useEffect` fetching quickly. Product screens often need the same data in multiple places, background refreshes, mutation feedback, cache sharing across routes, retries for flaky networks, and instant-feeling updates after create or delete actions. Rebuilding all of that by hand in each component becomes repetitive and fragile.
+
+That is why TanStack Query is so common in production React apps. It turns server state into a first-class system with query keys, caching, invalidation, retries, and mutation lifecycle hooks. Teams spend less time wiring boilerplate and more time building actual product behavior.
+
+You still need to understand the basic fetch pattern, though, because it teaches the underlying problems React Query is solving. The best developers know both the low-level version and the scalable abstraction.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between server state and client state?
+**A:** Client state is local application state your UI directly controls, such as open modals, selected tabs, or local form fields. Server state comes from an external system and needs fetching, caching, synchronization, invalidation, retries, and freshness management.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a race condition in data fetching and how do you prevent it?
+**A:** A race condition happens when multiple requests are in flight and an older request resolves after a newer one, incorrectly overwriting the latest data. You prevent it with cleanup and cancellation, such as `AbortController`, or by using a data library like React Query that manages request identity and caching more safely.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does React Query give you over a raw `useEffect` fetch?
+**A:** React Query gives you caching, query keys, retries, background refetching, stale data handling, invalidation after mutations, optimistic updates, and much less repeated loading/error boilerplate. It treats server data as server state instead of just one-off local component state.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is an optimistic update?
+**A:** An optimistic update updates the interface immediately before the server responds, assuming the mutation will succeed. If the server later fails, the app should roll back or refetch to restore the correct state.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is query invalidation?
+**A:** Query invalidation is telling React Query that cached data for a given query key is now stale and should refetch. This commonly happens after a successful mutation that changes server data.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does React Query cache?"
+  options={[
+    "Only component local state",
+    "Server responses associated with query keys",
+    "Only browser cookies",
+    "Only POST requests"
+  ]}
+  correct={1}
+  explanation="React Query caches server responses and associates them with query keys so the same data can be reused, invalidated, and refetched intelligently."
+/>
+
+<Quiz
+  question="What is an optimistic update?"
+  options={[
+    "Waiting for the server before changing the UI",
+    "Updating the UI before the server responds",
+    "Only retrying failed GET requests",
+    "Refetching all queries on every route change"
+  ]}
+  correct={1}
+  explanation="An optimistic update changes the UI immediately before the server confirms the mutation, then rolls back or refetches if the request fails."
+/>
+
+<MarkDone slug="21-data-fetching" track="react" />

@@ -1,0 +1,894 @@
+---
+title: "Forms in React"
+description: "Learn controlled vs uncontrolled inputs, how to manage form state, validate fields, show errors, and build complete login and registration forms."
+level: "beginner"
+minutes: 12
+stage: "Stage 2 — Core React"
+slug: "08-forms"
+track: "react"
+---
+
+## Why this exists
+
+Forms are where users actually give your application information. They type names, choose options, accept terms, submit login credentials, and update profile data. If you cannot build forms well, you cannot build most real applications. Forms are one of the most practical and important parts of frontend development.
+
+React forms matter because the browser already has its own form behavior, but React apps often need more control than plain HTML gives by default. You may want instant validation, dynamic error messages, controlled inputs, submit handling without page reloads, and UI that always stays in sync with the current state. That is why React form patterns are so important.
+
+## How it works
+
+The most important concept in React forms is the difference between controlled and uncontrolled components. In a controlled component, React state is the source of truth for the input's value. The value shown in the input comes from state, and `onChange` updates that state. In an uncontrolled component, the DOM element keeps track of its own current value, and React does not fully control it.
+
+Controlled components are usually preferred in React because they make the UI predictable. When the current input value lives in React state, you can validate it, display it elsewhere, clear it, submit it, or conditionally show errors based on it. React and the visible form stay in sync because they both depend on the same state value.
+
+Different form controls use slightly different props. Text inputs and textareas use `value` with `onChange`. A select element also uses `value` on the `select` itself, not on the option. Checkboxes use `checked` instead of `value`, and you usually read `event.target.checked` instead of `event.target.value`. Radio buttons work as a group because they share the same `name`, and one selected value is stored in state.
+
+When a form has many fields, it is common to keep all related values in one state object. That works especially well when you handle all changes through one `onChange` function using `event.target.name`. This lets one handler update different fields based on the input's name and type.
+
+Form submission usually happens through `onSubmit`, and inside the submit handler you often call `event.preventDefault()`. Without it, the browser will perform the normal form submission behavior and reload the page. In React, you usually want to handle submission in JavaScript instead.
+
+Validation is another major part of forms. Some fields are required. Some need a minimum length. Emails often need format validation. Good forms do not just check values at submit time. They also decide when to show errors. A common pattern is touched fields: only show a field's error after the user has interacted with that field, usually through `onBlur`.
+
+File inputs are a special case. In React, file inputs are always uncontrolled because the browser does not let you programmatically set their value for security reasons. You can still read selected files, but you do not control the value the same way you do with normal text inputs.
+
+Later in real projects, teams often use tools like React Hook Form and schema validation libraries such as Zod or Yup to reduce boilerplate. But before those tools make sense, you need to understand the basic controlled form patterns first.
+
+## Syntax
+
+```tsx
+const [value, setValue] = useState('')
+
+<input
+  value={value}
+  onChange={(event) => setValue(event.target.value)}
+/>
+```
+
+## Code examples
+
+### Example 1 — Controlled text input
+
+The most basic form pattern is a controlled text input.
+
+```tsx
+import { useState } from 'react'
+
+export default function NameInput() {
+  const [name, setName] = useState('')
+
+  return (
+    <section>
+      <input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder="Type your name"
+      />
+      <p>Hello, {name || 'friend'}.</p>
+    </section>
+  )
+}
+```
+
+The input value is driven by React state, and `onChange` keeps that state updated.
+
+### Example 2 — Controlled textarea
+
+Textarea follows the same controlled pattern as a normal input.
+
+```tsx
+import { useState } from 'react'
+
+export default function MessageBox() {
+  const [message, setMessage] = useState('')
+
+  return (
+    <section>
+      <textarea
+        value={message}
+        onChange={(event) => setMessage(event.target.value)}
+        placeholder="Write your message"
+      />
+      <p>Characters: {message.length}</p>
+    </section>
+  )
+}
+```
+
+Even though the HTML tag is different, the React pattern is the same: `value` plus `onChange`.
+
+### Example 3 — Controlled select dropdown
+
+For selects, the value belongs on the `select` element itself.
+
+```tsx
+import { useState } from 'react'
+
+export default function PlanPicker() {
+  const [plan, setPlan] = useState('basic')
+
+  return (
+    <section>
+      <select value={plan} onChange={(event) => setPlan(event.target.value)}>
+        <option value="basic">Basic</option>
+        <option value="pro">Pro</option>
+        <option value="enterprise">Enterprise</option>
+      </select>
+      <p>Selected plan: {plan}</p>
+    </section>
+  )
+}
+```
+
+The selected option is controlled by the `value` on the select, not by manually marking the option.
+
+### Example 4 — Controlled checkbox
+
+Checkboxes use `checked` instead of `value`.
+
+```tsx
+import { useState } from 'react'
+
+export default function NewsletterSignup() {
+  const [subscribed, setSubscribed] = useState(false)
+
+  return (
+    <label>
+      <input
+        type="checkbox"
+        checked={subscribed}
+        onChange={(event) => setSubscribed(event.target.checked)}
+      />
+      Join newsletter
+    </label>
+  )
+}
+```
+
+The important detail is `event.target.checked`, not `event.target.value`.
+
+### Example 5 — Controlled checkbox group
+
+When multiple checkboxes represent multiple selected values, state often becomes an array.
+
+```tsx
+import { useState } from 'react'
+
+const allTags = ['React', 'Next.js', 'JavaScript']
+
+export default function TopicFilter() {
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+
+  function handleCheckboxChange(tag: string, checked: boolean) {
+    setSelectedTags((currentTags) =>
+      checked
+        ? [...currentTags, tag]
+        : currentTags.filter((item) => item !== tag),
+    )
+  }
+
+  return (
+    <section>
+      {allTags.map((tag) => (
+        <label key={tag}>
+          <input
+            type="checkbox"
+            checked={selectedTags.includes(tag)}
+            onChange={(event) =>
+              handleCheckboxChange(tag, event.target.checked)
+            }
+          />
+          {tag}
+        </label>
+      ))}
+      <p>Selected: {selectedTags.join(', ') || 'None'}</p>
+    </section>
+  )
+}
+```
+
+This pattern is useful for filters, preferences, and multi-select settings.
+
+### Example 6 — Controlled radio button group
+
+Radio buttons usually store one selected value.
+
+```tsx
+import { useState } from 'react'
+
+export default function AccountTypePicker() {
+  const [accountType, setAccountType] = useState('personal')
+
+  return (
+    <section>
+      <label>
+        <input
+          type="radio"
+          name="accountType"
+          value="personal"
+          checked={accountType === 'personal'}
+          onChange={(event) => setAccountType(event.target.value)}
+        />
+        Personal
+      </label>
+
+      <label>
+        <input
+          type="radio"
+          name="accountType"
+          value="business"
+          checked={accountType === 'business'}
+          onChange={(event) => setAccountType(event.target.value)}
+        />
+        Business
+      </label>
+    </section>
+  )
+}
+```
+
+The `name` groups the radios, and the selected value lives in state.
+
+### Example 7 — Multiple inputs with one handler
+
+Using one handler for many fields reduces repetition.
+
+```tsx
+import { useState } from 'react'
+
+type ProfileForm = {
+  firstName: string
+  email: string
+  subscribed: boolean
+}
+
+export default function ProfileEditor() {
+  const [form, setForm] = useState<ProfileForm>({
+    firstName: '',
+    email: '',
+    subscribed: false,
+  })
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, type } = event.target
+    const value =
+      type === 'checkbox' ? event.target.checked : event.target.value
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  return (
+    <section>
+      <input
+        name="firstName"
+        value={form.firstName}
+        onChange={handleChange}
+        placeholder="First name"
+      />
+
+      <input
+        name="email"
+        value={form.email}
+        onChange={handleChange}
+        placeholder="Email"
+      />
+
+      <label>
+        <input
+          type="checkbox"
+          name="subscribed"
+          checked={form.subscribed}
+          onChange={handleChange}
+        />
+        Subscribe
+      </label>
+    </section>
+  )
+}
+```
+
+This works because `name` tells the handler which field to update.
+
+### Example 8 — Form submission with `e.preventDefault()`
+
+React forms usually stop the browser's default page reload.
+
+```tsx
+import { useState } from 'react'
+
+export default function ContactForm() {
+  const [email, setEmail] = useState('')
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    console.log('Submitted:', email)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        placeholder="Email"
+      />
+      <button type="submit">Send</button>
+    </form>
+  )
+}
+```
+
+Without `preventDefault()`, the browser would try to submit the form normally and reload the page.
+
+### Example 9 — Form state as one object
+
+Related fields often fit well in one state object.
+
+```tsx
+import { useState } from 'react'
+
+type LoginForm = {
+  email: string
+  password: string
+}
+
+export default function LoginFields() {
+  const [form, setForm] = useState<LoginForm>({
+    email: '',
+    password: '',
+  })
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  return (
+    <section>
+      <input name="email" value={form.email} onChange={handleChange} />
+      <input name="password" value={form.password} onChange={handleChange} />
+    </section>
+  )
+}
+```
+
+Keeping related fields together can make form management easier.
+
+### Example 10 — Resetting the form after submit
+
+After a successful submit, you often want to clear the form.
+
+```tsx
+import { useState } from 'react'
+
+const initialForm = {
+  name: '',
+  email: '',
+}
+
+export default function ResettableForm() {
+  const [form, setForm] = useState(initialForm)
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    console.log('Submitted:', form)
+    setForm(initialForm)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="name" value={form.name} onChange={handleChange} />
+      <input name="email" value={form.email} onChange={handleChange} />
+      <button type="submit">Submit</button>
+    </form>
+  )
+}
+```
+
+Resetting usually means setting state back to the original initial values.
+
+### Example 11 — Basic validation before submit
+
+A form often needs to block invalid submission.
+
+```tsx
+import { useState } from 'react'
+
+export default function BasicValidationForm() {
+  const [name, setName] = useState('')
+  const [error, setError] = useState('')
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (name.trim() === '') {
+      setError('Name is required')
+      return
+    }
+
+    setError('')
+    console.log('Submitted:', name)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={name} onChange={(event) => setName(event.target.value)} />
+      {error ? <p>{error}</p> : null}
+      <button type="submit">Submit</button>
+    </form>
+  )
+}
+```
+
+This is a simple example of validation logic before submit succeeds.
+
+### Example 12 — Showing error messages per field
+
+Larger forms usually track errors by field name.
+
+```tsx
+import { useState } from 'react'
+
+type Errors = {
+  email?: string
+  password?: string
+}
+
+export default function FieldErrorsForm() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [errors, setErrors] = useState<Errors>({})
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const nextErrors: Errors = {}
+
+    if (email.trim() === '') {
+      nextErrors.email = 'Email is required'
+    }
+
+    if (password.trim() === '') {
+      nextErrors.password = 'Password is required'
+    }
+
+    setErrors(nextErrors)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={email} onChange={(event) => setEmail(event.target.value)} />
+      {errors.email ? <p>{errors.email}</p> : null}
+
+      <input
+        type="password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+      {errors.password ? <p>{errors.password}</p> : null}
+
+      <button type="submit">Submit</button>
+    </form>
+  )
+}
+```
+
+Per-field errors let the user see exactly which inputs need attention.
+
+### Example 13 — Touched state
+
+Touched fields help you avoid showing errors before the user has interacted.
+
+```tsx
+import { useState } from 'react'
+
+export default function TouchedFieldExample() {
+  const [email, setEmail] = useState('')
+  const [touched, setTouched] = useState(false)
+
+  const showError = touched && email.trim() === ''
+
+  return (
+    <section>
+      <input
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        onBlur={() => setTouched(true)}
+        placeholder="Email"
+      />
+      {showError ? <p>Email is required</p> : null}
+    </section>
+  )
+}
+```
+
+This creates a gentler experience because the error only appears after the user leaves the field.
+
+### Example 14 — Email format validation with regex
+
+Some validation rules check structure, not just emptiness.
+
+```tsx
+import { useState } from 'react'
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export default function EmailValidationExample() {
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState('')
+
+  function handleBlur() {
+    if (!emailPattern.test(email)) {
+      setError('Enter a valid email address')
+      return
+    }
+
+    setError('')
+  }
+
+  return (
+    <section>
+      <input
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        onBlur={handleBlur}
+      />
+      {error ? <p>{error}</p> : null}
+    </section>
+  )
+}
+```
+
+Regex validation is common for patterns like email addresses, though real production validation may be more robust.
+
+### Example 15 — A complete login form
+
+This example combines controlled inputs, validation, submit handling, and error messages.
+
+```tsx
+import { useState } from 'react'
+
+export default function LoginForm() {
+  const [form, setForm] = useState({
+    email: '',
+    password: '',
+  })
+  const [errors, setErrors] = useState({
+    email: '',
+    password: '',
+  })
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const nextErrors = {
+      email: '',
+      password: '',
+    }
+
+    if (form.email.trim() === '') {
+      nextErrors.email = 'Email is required'
+    }
+
+    if (form.password.trim().length < 6) {
+      nextErrors.password = 'Password must be at least 6 characters'
+    }
+
+    setErrors(nextErrors)
+
+    if (!nextErrors.email && !nextErrors.password) {
+      console.log('Login submitted', form)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        name="email"
+        value={form.email}
+        onChange={handleChange}
+        placeholder="Email"
+      />
+      {errors.email ? <p>{errors.email}</p> : null}
+
+      <input
+        type="password"
+        name="password"
+        value={form.password}
+        onChange={handleChange}
+        placeholder="Password"
+      />
+      {errors.password ? <p>{errors.password}</p> : null}
+
+      <button type="submit">Log in</button>
+    </form>
+  )
+}
+```
+
+This is much closer to a real application form than the smaller isolated examples.
+
+### Example 16 — A complete registration form
+
+This final example includes multiple fields, password confirmation, and terms acceptance.
+
+```tsx
+import { useState } from 'react'
+
+type RegistrationForm = {
+  name: string
+  email: string
+  password: string
+  confirmPassword: string
+  acceptedTerms: boolean
+}
+
+const initialForm: RegistrationForm = {
+  name: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  acceptedTerms: false,
+}
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export default function RegistrationFormExample() {
+  const [form, setForm] = useState<RegistrationForm>(initialForm)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, type } = event.target
+    const value =
+      type === 'checkbox' ? event.target.checked : event.target.value
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }))
+  }
+
+  function handleBlur(event: React.FocusEvent<HTMLInputElement>) {
+    const fieldName = event.target.name
+
+    setTouched((currentTouched) => ({
+      ...currentTouched,
+      [fieldName]: true,
+    }))
+  }
+
+  function validate(currentForm: RegistrationForm) {
+    const nextErrors: Record<string, string> = {}
+
+    if (currentForm.name.trim() === '') {
+      nextErrors.name = 'Name is required'
+    }
+
+    if (!emailPattern.test(currentForm.email)) {
+      nextErrors.email = 'Enter a valid email address'
+    }
+
+    if (currentForm.password.length < 6) {
+      nextErrors.password = 'Password must be at least 6 characters'
+    }
+
+    if (currentForm.confirmPassword !== currentForm.password) {
+      nextErrors.confirmPassword = 'Passwords must match'
+    }
+
+    if (!currentForm.acceptedTerms) {
+      nextErrors.acceptedTerms = 'You must accept the terms'
+    }
+
+    return nextErrors
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const nextErrors = validate(form)
+    setErrors(nextErrors)
+
+    if (Object.keys(nextErrors).length === 0) {
+      console.log('Registration submitted', form)
+      setForm(initialForm)
+      setTouched({})
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        name="name"
+        value={form.name}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder="Full name"
+      />
+      {touched.name && errors.name ? <p>{errors.name}</p> : null}
+
+      <input
+        name="email"
+        value={form.email}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder="Email"
+      />
+      {touched.email && errors.email ? <p>{errors.email}</p> : null}
+
+      <input
+        type="password"
+        name="password"
+        value={form.password}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder="Password"
+      />
+      {touched.password && errors.password ? <p>{errors.password}</p> : null}
+
+      <input
+        type="password"
+        name="confirmPassword"
+        value={form.confirmPassword}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder="Confirm password"
+      />
+      {touched.confirmPassword && errors.confirmPassword ? (
+        <p>{errors.confirmPassword}</p>
+      ) : null}
+
+      <label>
+        <input
+          type="checkbox"
+          name="acceptedTerms"
+          checked={form.acceptedTerms}
+          onChange={handleChange}
+          onBlur={handleBlur}
+        />
+        Accept terms
+      </label>
+      {touched.acceptedTerms && errors.acceptedTerms ? (
+        <p>{errors.acceptedTerms}</p>
+      ) : null}
+
+      <button type="submit">Create account</button>
+    </form>
+  )
+}
+```
+
+This brings together most of the major beginner form patterns you need in one realistic example.
+
+<LivePreview id="controlled-input" />
+
+<LivePreview id="todo-list" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Forgetting `event.preventDefault()` on form submit.
+**Fix:** Call `event.preventDefault()` inside your submit handler.
+**Why:** Without it, the browser performs its default form submission behavior and reloads the page.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using `event.target.value` for checkboxes.
+**Fix:** Use `event.target.checked` for checkboxes.
+**Why:** A checkbox's real state is whether it is checked, not its text value.
+</Callout>
+
+<Callout type="tip">
+Use `event.target.name` to handle many inputs with one `onChange` function. This keeps large forms much easier to maintain.
+</Callout>
+
+<Callout type="tip">
+Keep form state as one object when the fields are closely related, such as a login or registration form. This often reduces repeated state setup.
+</Callout>
+
+<Callout type="note">
+File inputs are always uncontrolled in React. You can read the selected files, but you cannot directly control the input's value the same way you do with text fields.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between controlled and uncontrolled components?
+**A:** In a controlled component, React state is the source of truth for the input's current value. The visible input value comes from state, and user changes update that state through handlers like `onChange`. In an uncontrolled component, the DOM element itself keeps track of the current value. Controlled components are usually preferred in React because they make the form behavior easier to validate, reset, and keep in sync with the rest of the UI.
+</Callout>
+
+## How this is used in real projects
+
+Forms are one of the most common places where product requirements meet implementation detail. A login form needs validation, loading states, and error handling. A profile form may need inline field validation, touched logic, and reset behavior. A registration form usually needs multiple related fields, checkbox handling, password matching, and submit flow. These are everyday patterns in real React work.
+
+In larger apps, teams often store related fields in one object and use one shared change handler to keep the code manageable. They also separate validation logic so forms stay readable. Good form design is not just about inputs working. It is about clear feedback, predictable state, and making the user feel guided instead of blocked.
+
+Later, tools like React Hook Form, Zod, and Yup help reduce repetitive form boilerplate. But those tools make more sense once you already understand the controlled patterns underneath them. If you understand these fundamentals, those libraries will feel like helpers rather than magic.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is a controlled component in React?
+**A:** A controlled component is an input whose displayed value is driven by React state. The value comes from state, and the component updates that state through handlers like `onChange`. This gives React full control over what the input currently shows. Controlled components are useful because validation, resetting, and conditional UI all become easier when React owns the current value.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between controlled and uncontrolled components?
+**A:** Controlled components store the input value in React state and keep the UI synchronized with that state. Uncontrolled components let the DOM keep track of the current value internally, and React reads it only when needed, often through refs. Controlled components usually give you more predictable behavior in React apps. Uncontrolled components can be simpler in small cases, but they provide less direct control over validation and live UI updates.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you handle a checkbox in React?
+**A:** In React, a checkbox is typically controlled through the `checked` prop rather than the `value` prop. Inside `onChange`, you usually read `event.target.checked` to get the new boolean state. That boolean is then stored in state. This is different from text inputs, which usually use `event.target.value`.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you handle multiple inputs with one `onChange` handler?
+**A:** A common pattern is to give each input a `name` attribute that matches a field in your state object. Then one shared `onChange` handler reads `event.target.name` and `event.target.value` or `event.target.checked` depending on the input type. It updates the matching field in the state object using computed property names. This reduces duplication and keeps bigger forms manageable.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the touched fields concept in form validation?
+**A:** Touched fields are fields the user has already interacted with, usually tracked after blur events. The idea is that you do not want to show validation errors for every empty field as soon as the form first renders. Instead, you wait until the user has focused and left the field. This creates a less noisy and more user-friendly validation experience.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="How do you read a checkbox value in `onChange`?"
+  options={[
+    "event.target.value",
+    "event.target.checked",
+    "event.checked",
+    "event.currentValue"
+  ]}
+  correct={1}
+  explanation="Checkboxes use `event.target.checked` because their important state is whether they are checked, not a text value."
+/>
+
+<Quiz
+  question="What makes a component controlled?"
+  options={[
+    "Its value is driven by React state",
+    "It uses a file input",
+    "It has no submit button",
+    "It uses only inline styles"
+  ]}
+  correct={0}
+  explanation="A controlled component is controlled by React state. The visible value comes from state, and updates flow through React handlers."
+/>
+
+<Quiz
+  question="Why do we call `event.preventDefault()` on form submit?"
+  options={[
+    "To stop React from rendering",
+    "To prevent the browser from reloading the page",
+    "To force the input to reset automatically",
+    "To stop validation from running"
+  ]}
+  correct={1}
+  explanation="The browser normally performs a full form submission action. `event.preventDefault()` stops that so the React app can handle submission itself."
+/>
+
+<MarkDone slug="08-forms" track="react" />

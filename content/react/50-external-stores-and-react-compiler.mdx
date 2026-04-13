@@ -1,0 +1,278 @@
+---
+title: "External stores and React Compiler awareness"
+description: "Learn when state belongs outside component state, why useSyncExternalStore exists, where useDebugValue fits, and how React Compiler changes the memoization conversation."
+level: "advanced"
+minutes: 12
+stage: "Stage 7 — Modern React"
+slug: "50-external-stores-and-react-compiler"
+track: "react"
+---
+
+## Why this exists
+
+Not all application state naturally lives inside one component tree. Some state comes from an external store, a browser event source, a shared singleton, or a library that manages its own subscriptions. When React components read from that kind of source, the integration must be precise or you get tearing, stale reads, and update timing bugs that are hard to reason about.
+
+That is why `useSyncExternalStore` exists. It gives React a standard way to subscribe to external data and read snapshots safely. Instead of every library inventing its own subscription pattern, React provides a contract for how those updates should flow into rendering.
+
+This topic also matters because performance conversations are changing. React Compiler awareness means teams should think less in terms of "manually memoize everything just in case" and more in terms of pure rendering, clear ownership, and code that the compiler can reason about. So this lesson connects two related ideas: safe external subscriptions and a more modern performance mindset.
+
+## How it works
+
+`useSyncExternalStore` has two core jobs:
+
+- subscribe React to an external source
+- read the current snapshot of that source
+
+The hook takes a subscribe function and a snapshot function. React uses those to know when the external source changed and what value the component should render now.
+
+The important mental model is that React needs a stable way to ask, "What is the current value?" and "Tell me when it changes." If you hand-roll that logic with ad hoc `useEffect` subscriptions and local mirrors of store state, the code often drifts into edge cases around timing and consistency. `useSyncExternalStore` gives that integration an official shape.
+
+This is especially useful for:
+
+- custom external stores
+- browser-driven shared sources
+- libraries that expose subscribe/getSnapshot style APIs
+
+`useDebugValue` fits into a different but related layer. It does not affect runtime behavior. It lets a custom hook expose a more meaningful label in React DevTools. That is helpful when a hook wraps an external store or some reusable internal logic and you want its current value to be easier to inspect during debugging.
+
+React Compiler awareness is not a hook. It is a shift in how teams think about optimization. The compiler can automate some of the memoization work developers previously did by hand, but that does not mean performance discipline disappears. Pure components, stable ownership, and avoiding unnecessary derived complexity still matter. The lesson is not "memoization is dead." The lesson is "clear, pure code matters even more than cargo-cult memoization."
+
+## Syntax
+
+```tsx
+const snapshot = useSyncExternalStore(subscribe, getSnapshot)
+```
+
+```tsx
+function useSharedValue() {
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot)
+
+  useDebugValue(snapshot)
+
+  return snapshot
+}
+```
+
+## Code examples
+
+### Example 1 — Minimal external store with `useSyncExternalStore`
+
+This is the smallest useful shape.
+
+```tsx
+import { useSyncExternalStore } from 'react'
+
+let count = 0
+const listeners = new Set<() => void>()
+
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+function getSnapshot() {
+  return count
+}
+
+function increment() {
+  count += 1
+  listeners.forEach((listener) => listener())
+}
+
+export default function Counter() {
+  const currentCount = useSyncExternalStore(subscribe, getSnapshot)
+
+  return <button onClick={increment}>Count: {currentCount}</button>
+}
+```
+
+React now has an official subscription contract for this external value instead of a homemade sync pattern.
+
+### Example 2 — Derived selector from an external store snapshot
+
+External store hooks can still derive smaller values cleanly.
+
+```tsx
+type StoreState = {
+  online: boolean
+  queuedJobs: number
+}
+
+function useJobSummary() {
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot)
+
+  return {
+    online: snapshot.online,
+    hasQueuedJobs: snapshot.queuedJobs > 0,
+  }
+}
+```
+
+The component can read a smaller, more focused shape without owning the external subscription itself.
+
+### Example 3 — Shared browser event source exposed through an external store
+
+Browser-driven external sources are a common fit.
+
+```tsx
+import { useSyncExternalStore } from 'react'
+
+function subscribe(listener: () => void) {
+  window.addEventListener('online', listener)
+  window.addEventListener('offline', listener)
+
+  return () => {
+    window.removeEventListener('online', listener)
+    window.removeEventListener('offline', listener)
+  }
+}
+
+function getSnapshot() {
+  return navigator.onLine
+}
+
+export function useOnlineStatus() {
+  return useSyncExternalStore(subscribe, getSnapshot)
+}
+```
+
+This is a good example because the source of truth is outside React, but React still needs a safe way to render it.
+
+### Example 4 — Custom hook with `useDebugValue`
+
+`useDebugValue` makes custom hooks easier to inspect.
+
+```tsx
+import { useDebugValue, useSyncExternalStore } from 'react'
+
+function useOnlineStatus() {
+  const isOnline = useSyncExternalStore(subscribe, getSnapshot)
+
+  useDebugValue(isOnline ? 'online' : 'offline')
+
+  return isOnline
+}
+```
+
+This does not change the UI, but it makes DevTools more helpful when debugging custom hooks.
+
+### Example 5 — Purity vs manual memoization in the React Compiler era
+
+This is the mindset shift that matters.
+
+```tsx
+// Worse: adding memoization first
+const value = useMemo(() => formatPolicy(policy), [policy])
+```
+
+```tsx
+// Better starting point: clear pure rendering
+const value = formatPolicy(policy)
+```
+
+If the code is pure and simple, React Compiler can often reason about it better than a codebase full of defensive manual memoization. The first question is still "Is this render pure and well-structured?" not "How fast can I wrap this in hooks?"
+
+<LivePreview id="external-store" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Mirroring an external store into local component state with `useEffect`.
+**Fix:** Use `useSyncExternalStore` when the source of truth is truly external.
+**Why:** React gets a safer subscription and snapshot contract instead of a fragile manual sync pattern.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Treating every shared value as an external-store problem.
+**Fix:** Keep ordinary component state local unless it genuinely lives outside the component tree.
+**Why:** `useSyncExternalStore` is for external sources, not for avoiding normal React state patterns.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using `useDebugValue` like a runtime feature.
+**Fix:** Treat it as a debugging aid for custom hooks.
+**Why:** It helps DevTools inspection, but it does not change how the app behaves.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Assuming React Compiler means code quality and purity no longer matter.
+**Fix:** Write components that are pure, readable, and well-owned first.
+**Why:** Compiler-aware optimization works best on code that already follows strong React fundamentals.
+</Callout>
+
+<Callout type="tip">
+If the source of truth already exists outside React and exposes "subscribe" plus "current value" behavior, that is a strong signal that `useSyncExternalStore` may be the right bridge.
+</Callout>
+
+## How this is used in real projects
+
+In real applications, external stores show up more often than many beginners expect. Browser online status, media-query subscriptions, websocket-backed shared state, analytics SDK status, cross-tab synchronization, and store libraries all create data that lives outside ordinary component state. When React components render that data, they need a reliable integration path. `useSyncExternalStore` gives that path a predictable shape.
+
+Custom hooks are usually where this logic belongs. Instead of every component knowing how to subscribe and unsubscribe from the underlying source, the hook hides that wiring and returns a clean value or small derived shape. That keeps the subscription logic reusable and much easier to audit.
+
+React Compiler awareness changes the performance conversation around code that wraps these hooks. Teams should still care deeply about purity, ownership, and rendering clarity. But instead of reflexively adding manual memoization to everything, the healthier habit is to write code that is easy for React and future tooling to optimize correctly.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What problem does `useSyncExternalStore` solve?
+**A:** `useSyncExternalStore` gives React an official way to subscribe to external data sources and read their current snapshot safely. It is useful when the source of truth lives outside component state, such as a custom store, browser event source, or external library. Instead of manually mirroring that value through effects and local state, the hook provides a cleaner and safer contract. A strong answer mentions both subscription and snapshot reading.
+</Callout>
+
+<Callout type="interview">
+**Q:** When would you use `useSyncExternalStore` instead of `useState`?
+**A:** You would use `useState` when the component itself owns the value. You would use `useSyncExternalStore` when the value already lives outside React and components need to subscribe to it. The distinction is about ownership of the source of truth. If React is not the owner, `useSyncExternalStore` is often the right bridge.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is `useDebugValue` for?
+**A:** `useDebugValue` is a debugging helper for custom hooks. It lets you show a more meaningful label or derived value in React DevTools so the hook is easier to inspect. It does not change the runtime behavior of the application. Its value is in developer experience and debugging clarity.
+</Callout>
+
+<Callout type="interview">
+**Q:** How does React Compiler awareness affect performance thinking?
+**A:** It shifts teams away from automatic manual memoization and toward cleaner, more pure component design. The compiler can handle some optimization work more effectively when code is predictable and well-structured. That does not mean performance thinking disappears. It means purity, ownership, and simplicity become even more important than scattered defensive memoization.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="When is `useSyncExternalStore` the better choice?"
+  options={[
+    "When the component owns the state locally",
+    "When the source of truth already lives outside React",
+    "Whenever you want to replace useState",
+    "Only when using Redux"
+  ]}
+  correct={1}
+  explanation="`useSyncExternalStore` is for external sources of truth that React components need to subscribe to safely."
+/>
+
+<Quiz
+  question="What does `useDebugValue` mainly improve?"
+  options={[
+    "Bundle size",
+    "Runtime rendering speed",
+    "React DevTools visibility for custom hooks",
+    "Server-side rendering"
+  ]}
+  correct={2}
+  explanation="`useDebugValue` is mainly a debugging aid that makes custom hooks easier to inspect in React DevTools."
+/>
+
+<Quiz
+  question="What is the healthier default mindset in a React Compiler-aware codebase?"
+  options={[
+    "Memoize everything manually first",
+    "Prioritize pure, clear, well-owned rendering logic",
+    "Avoid all derived values",
+    "Stop caring about performance entirely"
+  ]}
+  correct={1}
+  explanation="Compiler-aware performance work starts with pure, clear code. Manual memoization becomes a more deliberate choice rather than the default reflex."
+/>
+
+<MarkDone slug="50-external-stores-and-react-compiler" track="react" />

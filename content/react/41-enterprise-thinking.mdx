@@ -1,0 +1,324 @@
+---
+title: "Enterprise & senior-level thinking"
+description: "Learn how senior React engineers think about component boundaries, state placement, prop flow, and review quality in larger production codebases."
+level: "advanced"
+minutes: 12
+stage: "Stage 6 — Advanced"
+slug: "41-enterprise-thinking"
+track: "react"
+---
+
+## Why this exists
+
+Senior-level React work is not only about knowing more APIs. It is about making better decisions in messy real-world situations. Two developers can both know hooks, routing, and state management, but the more senior one usually makes stronger choices about architecture, ownership, tradeoffs, and long-term maintainability.
+
+This topic exists because enterprise React codebases create a different kind of challenge. The hard part is often no longer “how do I build this component?” It becomes:
+
+- where should this state live?
+- should this component be split?
+- is this prop flow still healthy?
+- what risks does this PR introduce?
+- what will this code feel like in six months?
+
+Those are judgment questions. This lesson is about building that judgment.
+
+## How it works
+
+One senior-level skill is knowing how to split components well. Components should not be split only because a file looks long. They should be split when responsibilities differ. A component that fetches data, handles mutation logic, manages a modal, formats analytics payloads, and renders a table is probably doing too many jobs at once. On the other hand, over-splitting can create a maze of tiny files that are harder to read together than one focused component would be.
+
+Another key skill is choosing the right state type. Not all state is the same:
+
+- local UI state belongs close to the component
+- shared client state belongs in a broader owner or store
+- server state often belongs in a server-state tool or server-rendered layer
+- derived state should often not be stored at all
+
+Senior engineers are usually cautious about storing duplicated or derived state because it creates synchronization bugs.
+
+Avoiding prop drilling is another recurring architectural question. Passing props through two or three levels is not automatically a problem. It only becomes a real problem when many unrelated layers are forwarding values they do not care about. At that point, composition, context, or a better ownership boundary may be cleaner. Senior thinking means not overreacting to any prop chain, but also not ignoring unhealthy shared-state flow.
+
+Code review quality is another major difference. A strong review is not only “looks good to me.” It asks:
+
+- can this break user behavior?
+- is the state ownership clear?
+- is the component boundary healthy?
+- is the code testable?
+- does this introduce hidden coupling?
+- is there a simpler design?
+
+Senior engineers also think in systems. They care about consistency across the codebase, not just whether one file is acceptable. A good pattern repeated across many features is usually worth more than one clever local abstraction.
+
+The practical mindset is this:
+
+- optimize for clarity first
+- choose the smallest architecture that fits the problem
+- keep ownership obvious
+- reduce hidden coupling
+- think beyond the current task
+
+## Syntax
+
+```tsx
+function UserTable({ users }: { users: User[] }) {
+  return <Table rows={users} />
+}
+```
+
+## Code examples
+
+### Example 1 — Splitting by responsibility
+
+This is a healthier split than one giant all-purpose component.
+
+```tsx
+function UsersPage() {
+  const users = useUsersQuery()
+
+  return (
+    <section>
+      <UsersToolbar />
+      <UsersTable users={users.data ?? []} />
+    </section>
+  )
+}
+```
+
+`UsersToolbar` and `UsersTable` each have a clearer job than one giant page component that owns everything.
+
+### Example 2 — Bad split versus good split
+
+Splitting every tiny element into separate files is not automatically better.
+
+```tsx
+function UserRow({ user }: { user: User }) {
+  return (
+    <tr>
+      <td>{user.name}</td>
+      <td>{user.email}</td>
+    </tr>
+  )
+}
+```
+
+This split is useful if row behavior is real. If it is only two trivial cells with no reuse, it may just add indirection.
+
+### Example 3 — Choosing local state
+
+Local UI state should stay local when no one else needs it.
+
+```tsx
+function AccordionItem() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <section>
+      <button onClick={() => setOpen((currentOpen) => !currentOpen)}>
+        Toggle
+      </button>
+      {open ? <p>Details</p> : null}
+    </section>
+  )
+}
+```
+
+### Example 4 — Lifting shared state
+
+Shared state should move upward to the smallest common owner.
+
+```tsx
+function Parent() {
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+
+  return (
+    <>
+      <UserList onSelect={setSelectedUserId} />
+      <UserDetails userId={selectedUserId} />
+    </>
+  )
+}
+```
+
+### Example 5 — Avoiding unnecessary derived state
+
+Derived values often should be computed, not stored.
+
+```tsx
+function CartSummary({ items }: { items: { price: number }[] }) {
+  const total = items.reduce((sum, item) => sum + item.price, 0)
+
+  return <p>Total: {total}</p>
+}
+```
+
+Storing `total` separately would create synchronization risk if `items` changes.
+
+### Example 6 — Prop drilling is sometimes okay
+
+Not every prop chain needs context.
+
+```tsx
+function Page() {
+  return <Toolbar currentUserName="Mahesh" />
+}
+
+function Toolbar({ currentUserName }: { currentUserName: string }) {
+  return <Header currentUserName={currentUserName} />
+}
+
+function Header({ currentUserName }: { currentUserName: string }) {
+  return <p>{currentUserName}</p>
+}
+```
+
+This is still readable. Senior thinking means solving the real problem, not every theoretical one.
+
+### Example 7 — When context is a better fit
+
+Shared cross-cutting state sometimes deserves context.
+
+```tsx
+const ThemeContext = createContext<'light' | 'dark'>('light')
+
+function App() {
+  return (
+    <ThemeContext.Provider value="dark">
+      <Dashboard />
+    </ThemeContext.Provider>
+  )
+}
+```
+
+### Example 8 — Review checklist example
+
+A senior review usually looks for behavior risk first.
+
+```txt
+PR review checklist
+- Does this change state ownership?
+- Could this create stale or duplicated state?
+- Are responsibilities clearer or more blurred?
+- Is there missing loading, error, or empty-state handling?
+- Is the behavior easy to test?
+```
+
+### Example 9 — Choosing state type intentionally
+
+Different problems deserve different state tools.
+
+```txt
+State choice guide
+- local toggle -> component state
+- shared theme -> context
+- cached API list -> TanStack Query
+- broad app UI state -> Zustand or another store when needed
+```
+
+### Example 10 — Simpler design wins
+
+A smaller design is often the more senior one.
+
+```tsx
+function SearchResults({ results }: { results: Result[] }) {
+  if (results.length === 0) {
+    return <p>No matches found.</p>
+  }
+
+  return <ResultsList results={results} />
+}
+```
+
+There is no need for extra abstraction if the current need is already clear and stable.
+
+<LivePreview id="enterprise-thinking" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Splitting components only based on file length.
+**Fix:** Split when responsibilities, ownership, or reuse boundaries are truly different.
+**Why:** Mechanical splitting often creates indirection without improving clarity.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Reaching for global state too early.
+**Fix:** Start with local ownership and move state outward only when the use case proves it.
+**Why:** Over-centralized state makes simple flows harder to follow.
+</Callout>
+
+<Callout type="tip">
+Two or three levels of prop passing are not automatically prop drilling in the harmful sense. The real issue is when many layers pass data they do not conceptually own.
+</Callout>
+
+<Callout type="note">
+Senior code review is mostly about risk, clarity, and maintainability, not just personal style preferences.
+</Callout>
+
+## How this is used in real projects
+
+In real teams, senior-level thinking shows up in architecture reviews, PR feedback, and incremental refactors. It is the difference between code that only solves today’s ticket and code that also respects the shape of the larger system.
+
+This does not mean adding more abstraction by default. Often the senior move is the opposite: choosing the simplest structure that keeps ownership clear and leaves room to grow.
+
+That balance is what makes large React codebases stay productive.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** How do you decide when to split a React component?
+**A:** I split a component when responsibilities diverge, when one part wants to be reused, or when separating the logic makes ownership clearer. I do not split only because a file is long. The goal is better boundaries, not more files.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you avoid prop drilling?
+**A:** First I check whether the prop chain is actually a problem. If the data only passes through a small number of related layers, props may still be the simplest solution. If the same shared state crosses many unrelated layers, I consider composition changes, context, or a state store depending on the problem.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you choose between local state, context, and a state library?
+**A:** I start with the narrowest owner possible. Local state is best when one component owns it. Context works for shared cross-cutting state with moderate complexity. A state library makes sense when shared state becomes broader, more dynamic, or needs stronger debugging and structure.
+</Callout>
+
+<Callout type="interview">
+**Q:** What do you look for in a React code review?
+**A:** I focus first on behavior risk and maintainability. I look at state ownership, duplicated or derived state, side effects, loading and error handling, testability, hidden coupling, and whether the code introduces unnecessary complexity.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="When is splitting a component usually the right move?"
+  options={[
+    "When responsibilities or ownership boundaries are clearly different",
+    "Whenever a file reaches 50 lines",
+    "Only when ESLint demands it",
+    "Never"
+  ]}
+  correct={0}
+  explanation="Good component splits follow responsibility and ownership boundaries, not arbitrary file length rules."
+/>
+
+<Quiz
+  question="What is often the best default for state placement?"
+  options={[
+    "Keep it as local as possible first",
+    "Put everything in global state immediately",
+    "Always use context for every value",
+    "Store every derived value separately"
+  ]}
+  correct={0}
+  explanation="Starting with the smallest reasonable owner keeps state easier to follow and avoids over-centralizing too early."
+/>
+
+<Quiz
+  question="What makes a strong React code review?"
+  options={[
+    "Looking at behavior risk, ownership, and maintainability",
+    "Only checking formatting",
+    "Approving quickly without reading deeply",
+    "Focusing only on whether the app compiled once"
+  ]}
+  correct={0}
+  explanation="Strong reviews prioritize behavioral safety, state ownership, maintainability, and long-term code health rather than only style or a passing compile."
+/>
+
+<MarkDone slug="41-enterprise-thinking" track="react" />

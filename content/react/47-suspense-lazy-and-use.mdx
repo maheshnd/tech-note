@@ -1,0 +1,300 @@
+---
+title: "Suspense, lazy, and use()"
+description: "Learn what Suspense really coordinates, how lazy loading differs from data waiting, and where the modern use() API fits into React's async rendering model."
+level: "advanced"
+minutes: 14
+stage: "Stage 7 — Modern React"
+slug: "47-suspense-lazy-and-use"
+track: "react"
+---
+
+## Why this exists
+
+As apps grow, they stop loading one neat block of UI all at once. Some parts of the screen are ready immediately. Other parts depend on code that has not loaded yet or data that is still being prepared. If React forced the whole screen to wait for everything, many apps would feel unnecessarily slow and rigid.
+
+`Suspense` exists to coordinate that waiting more gracefully. Instead of blocking the whole tree, React can show a fallback while a specific part of the UI waits for code or data. That makes the loading experience more intentional. It also lets us choose where loading boundaries belong, which is a major architecture decision in real apps.
+
+This topic matters because three related ideas are easy to mix up:
+
+- `lazy()` for loading component code later
+- `Suspense` for defining a loading boundary
+- `use()` for reading awaited values in newer React patterns
+
+They work together, but they are not the same thing.
+
+## How it works
+
+`Suspense` is a boundary. It says: "If anything inside this part of the tree is not ready yet, show this fallback for now." The fallback could be a spinner, a skeleton, a loading card, or any placeholder UI you choose.
+
+`lazy()` is one way a component inside that boundary can become "not ready." A lazy component is code-split, which means React loads its code only when the app actually needs it. Until that code finishes loading, the nearest `Suspense` boundary shows its fallback.
+
+That means:
+
+- `lazy()` is about **code splitting**
+- `Suspense` is about **coordinating the waiting UI**
+
+This is important because `Suspense` is broader than lazy loading. It is not just "the thing for lazy imports." It is a general async coordination boundary in modern React.
+
+The `use()` API fits into that broader picture. In newer React patterns, `use()` can read a promise-like value and let React suspend until that value is ready. That makes `Suspense` useful for data waiting too, not just code loading. The key idea is that `use()` is not a replacement for `Suspense`. It works with `Suspense`, because the boundary still decides what the user sees while something is pending.
+
+Boundary placement matters a lot. If you place one giant `Suspense` boundary around the whole page, the whole page may wait behind one fallback. If you place smaller boundaries around independent sections, the ready parts of the UI can appear earlier while slower parts continue loading. That is why nested `Suspense` boundaries are often better than one huge global one.
+
+## Syntax
+
+```tsx
+const LazyPanel = lazy(() => import('./LazyPanel'))
+
+return (
+  <Suspense fallback={<p>Loading panel...</p>}>
+    <LazyPanel />
+  </Suspense>
+)
+```
+
+```tsx
+function ProductDetails({ productPromise }: { productPromise: Promise<Product> }) {
+  const product = use(productPromise)
+
+  return <h2>{product.name}</h2>
+}
+```
+
+## Code examples
+
+### Example 1 — Lazy-loaded component with `lazy()` and `<Suspense>`
+
+This is the classic starting point.
+
+```tsx
+import { Suspense, lazy } from 'react'
+
+const LazyDashboardPanel = lazy(() => import('./DashboardPanel'))
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={<p>Loading dashboard panel...</p>}>
+      <LazyDashboardPanel />
+    </Suspense>
+  )
+}
+```
+
+`lazy()` delays loading the code for `DashboardPanel`, and `Suspense` decides what to show while that code is still loading.
+
+### Example 2 — Section-level fallback boundary
+
+A page often has one fast section and one slower section. The slower section should not block the entire screen.
+
+```tsx
+import { Suspense, lazy } from 'react'
+
+const LazyInsights = lazy(() => import('./Insights'))
+
+export default function AnalyticsPage() {
+  return (
+    <main>
+      <h1>Analytics</h1>
+      <SummaryCards />
+
+      <Suspense fallback={<p>Loading insights...</p>}>
+        <LazyInsights />
+      </Suspense>
+    </main>
+  )
+}
+```
+
+This is better than wrapping the whole page if the summary cards are already ready.
+
+### Example 3 — Nested Suspense boundaries
+
+Nested boundaries let slower sub-sections wait independently.
+
+```tsx
+import { Suspense, lazy } from 'react'
+
+const LazyClaimsPanel = lazy(() => import('./ClaimsPanel'))
+const LazyInsightsPanel = lazy(() => import('./InsightsPanel'))
+
+export default function ClaimsScreen() {
+  return (
+    <Suspense fallback={<p>Loading claims panel...</p>}>
+      <LazyClaimsPanel />
+
+      <Suspense fallback={<p>Loading deeper insights...</p>}>
+        <LazyInsightsPanel />
+      </Suspense>
+    </Suspense>
+  )
+}
+```
+
+The inner boundary can still be loading even after the outer part of the UI is already visible.
+
+### Example 4 — Bad boundary placement vs better boundary placement
+
+One big boundary often hides too much.
+
+```tsx
+// Too broad
+<Suspense fallback={<FullPageSpinner />}>
+  <Header />
+  <Filters />
+  <LazyReports />
+</Suspense>
+```
+
+```tsx
+// Better
+<>
+  <Header />
+  <Filters />
+  <Suspense fallback={<ReportsSkeleton />}>
+    <LazyReports />
+  </Suspense>
+</>
+```
+
+The better version lets the stable parts of the screen render immediately.
+
+### Example 5 — A conceptual `use()` example
+
+`use()` is part of newer React async patterns. It lets a component read a promise-like value and suspend until that value is ready.
+
+```tsx
+import { Suspense, use } from 'react'
+
+type User = {
+  name: string
+}
+
+function UserCard({
+  userPromise,
+}: {
+  userPromise: Promise<User>
+}) {
+  const user = use(userPromise)
+
+  return <p>{user.name}</p>
+}
+
+export default function Page({
+  userPromise,
+}: {
+  userPromise: Promise<User>
+}) {
+  return (
+    <Suspense fallback={<p>Loading user...</p>}>
+      <UserCard userPromise={userPromise} />
+    </Suspense>
+  )
+}
+```
+
+The important idea is that `use()` does not remove the need for `Suspense`. It works because `Suspense` provides the loading boundary while the promise is still pending.
+
+<LivePreview id="suspense-lazy" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Thinking `Suspense` is only for `lazy()` imports.
+**Fix:** Understand that `Suspense` is a general boundary for async waiting in modern React.
+**Why:** `lazy()` is one use case, but Suspense also matters for newer data-waiting patterns.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Wrapping the whole page in one giant fallback.
+**Fix:** Place boundaries around slower sections so the rest of the screen can render sooner.
+**Why:** Broad boundaries often hide useful UI that was already ready.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using `lazy()` for components that are always needed above the fold.
+**Fix:** Lazy-load sections that are truly heavy, secondary, or conditional.
+**Why:** Code splitting is helpful when it delays meaningful work, not when it adds loading overhead to critical UI.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Treating `use()` as a replacement for understanding data flow.
+**Fix:** Learn that `use()` is part of React’s async rendering model and still depends on good boundary placement.
+**Why:** The API helps read pending values, but architecture still decides how loading feels to the user.
+</Callout>
+
+<Callout type="tip">
+When a slower section should not block a ready section, that is usually a sign you want a smaller Suspense boundary.
+</Callout>
+
+<Callout type="note">
+This app’s live preview focuses on `Suspense` and `lazy()` so it stays compatible with the current runtime. The `use()` examples are included in the lesson content because they belong in the modern React mental model.
+</Callout>
+
+## How this is used in real projects
+
+In real apps, `lazy()` is often used for secondary panels, admin-only tools, report builders, large charting widgets, and flows the user may never open during a given session. That keeps the initial bundle smaller and avoids paying the cost of loading everything up front. The best candidates are heavy or optional sections, not the most critical first-screen UI.
+
+`Suspense` is more about experience design than import syntax. Teams use it to decide which parts of the UI can appear immediately and which parts can wait behind local fallbacks. A dashboard may show the header, quick metrics, and filters right away while a slower analytics panel streams in later. Smaller boundaries often create a more polished loading experience than one giant page spinner.
+
+The newer `use()` model matters because it pushes React toward a more unified way of handling async UI. Whether the waiting comes from code or data, the surrounding question is the same: where should the boundary be, and what should the user see while that part is pending?
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between `lazy()` and `Suspense`?
+**A:** `lazy()` is a code-splitting helper that delays loading a component’s code until it is needed. `Suspense` is a boundary that defines what UI should appear while something inside it is still pending. They are often used together, but they solve different problems. A good answer says `lazy()` creates the waiting condition and `Suspense` manages the user experience around that wait.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why does Suspense boundary placement matter?
+**A:** Boundary placement controls how much of the UI waits behind one fallback. If the boundary is too broad, ready sections of the page can disappear behind a loading state even though they did not need to wait. If the boundaries are more focused, the ready parts can render sooner while slower parts continue loading independently. This has a big effect on perceived performance and polish.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does `use()` do in modern React?
+**A:** `use()` lets a component read a promise-like value and suspend until that value is ready. It fits into React’s async rendering model and works with `Suspense`, because the boundary is still what shows fallback UI while waiting. The core idea is not that `use()` replaces loading states by itself, but that it gives React a more direct way to coordinate waiting within components.
+</Callout>
+
+<Callout type="interview">
+**Q:** When would lazy loading be a bad fit?
+**A:** Lazy loading is a bad fit when the component is critical to the initial view and the split only adds extra delay to content the user needs immediately. It can also be a poor fit for tiny components where the overhead is not worth the complexity. The best lazy-loading candidates are heavier or less frequently used sections. A senior answer always connects lazy loading to real user experience, not just bundle theory.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does `lazy()` mainly do?"
+  options={[
+    "Creates a loading spinner automatically",
+    "Delays loading component code until it is needed",
+    "Fetches data from the server",
+    "Replaces useMemo"
+  ]}
+  correct={1}
+  explanation="`lazy()` is for code splitting. It delays loading a component’s code until that component is rendered."
+/>
+
+<Quiz
+  question="What is `Suspense` responsible for?"
+  options={[
+    "Generating route params",
+    "Defining the fallback UI while something inside is pending",
+    "Memoizing child components",
+    "Updating state in the background"
+  ]}
+  correct={1}
+  explanation="`Suspense` is the boundary that decides what the user sees while a child is still waiting on code or data."
+/>
+
+<Quiz
+  question="Why are smaller Suspense boundaries often better?"
+  options={[
+    "They make code split files smaller automatically",
+    "They let ready sections render without being blocked by slower sections",
+    "They remove the need for fallback UI",
+    "They force every component to lazy load"
+  ]}
+  correct={1}
+  explanation="Smaller boundaries let React show ready parts of the interface earlier while slower parts continue loading independently."
+/>
+
+<MarkDone slug="47-suspense-lazy-and-use" track="react" />

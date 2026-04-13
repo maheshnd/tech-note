@@ -1,0 +1,401 @@
+---
+title: "JSX"
+description: "Learn what JSX is, why it exists, how it compiles, the core rules you must follow, and how to read and write JSX confidently."
+level: "beginner"
+minutes: 7
+stage: "Stage 1 — Foundation"
+slug: "02-jsx"
+track: "react"
+---
+
+## Why this exists
+
+If React forced you to write `React.createElement(...)` every time you wanted a heading, a button, or a list, UI code would become hard to read very quickly. JSX exists to make component code look closer to the screen you are trying to build. That makes the structure of your UI easier to scan, easier to reason about, and easier to maintain.
+
+JSX is especially helpful for beginners because it reduces noise. Instead of mentally translating low-level function calls into visible UI, you can write markup-like code that clearly shows the structure of the interface. But JSX is not HTML. It lives inside JavaScript, follows JavaScript rules, and gets compiled before the browser ever sees it.
+
+## How it works
+
+JSX is syntax sugar over `React.createElement`. That means JSX is not a separate language the browser understands directly. A build tool such as Babel, TypeScript, or Vite transforms JSX into ordinary JavaScript function calls before the code runs. So when you write `<h1>Hello</h1>`, the browser does not receive angle brackets. It receives JavaScript that describes a UI element.
+
+This is why JSX behaves differently from plain HTML. You are writing JavaScript expressions that describe UI, not raw HTML that the browser parses directly. Because of that, JSX uses JavaScript-friendly rules such as `className` instead of `class`, `htmlFor` instead of `for`, camelCase for many attributes, and explicitly closed tags like `<input />`.
+
+Braces in JSX, like `{name}`, mean "evaluate this JavaScript expression here." An expression is something that produces a value, such as a variable, function call, ternary, string operation, or array `.map()`. Statements like `if`, `for`, and `while` are not expressions, so they cannot go directly inside JSX braces. If you need those, you move the logic above the `return` and then render the result.
+
+JSX also has a few structural rules that help React parse your UI clearly. A JSX expression must return a single parent element or a fragment. Components must start with capital letters so React knows they are custom components instead of built-in HTML tags. Self-closing tags must actually close. Fragments exist so you can return multiple siblings without adding an unnecessary wrapper element to the real DOM.
+
+Finally, JSX handles whitespace a little differently than HTML. Newlines and indentation in your source code do not always become visible spaces in the browser the way beginners expect. In practice, this means you should think of JSX as JavaScript that describes UI, not as a copy of HTML behavior line for line.
+
+## Syntax
+
+```tsx
+function Greeting({ name }: { name: string }) {
+  return <h1>Hello, {name}</h1>
+}
+```
+
+## Code examples
+
+### Example 1 — JSX vs what it compiles to
+
+The first thing to understand is that JSX is just a nicer authoring format. Under the hood, it becomes JavaScript.
+
+```tsx
+const element = <h1 className="title">Hello JSX</h1>
+```
+
+```js
+const element = React.createElement(
+  'h1',
+  { className: 'title' },
+  'Hello JSX',
+)
+```
+
+The two snippets describe the same UI. JSX is easier for humans to write and read, but JavaScript is what actually runs.
+
+### Example 2 — Embedding a variable in JSX
+
+One of the most common JSX patterns is putting a JavaScript variable directly into the UI with braces.
+
+```tsx
+export default function App() {
+  const name = 'Mahesh'
+
+  return <p>Hello, {name}</p>
+}
+```
+
+The braces mean "insert the value of this JavaScript expression here." React renders the value into the output.
+
+### Example 3 — Calling a function inside JSX
+
+You are not limited to variables. Any valid expression that returns a value can go inside braces.
+
+```tsx
+function formatName(name: string) {
+  return name.toUpperCase()
+}
+
+export default function App() {
+  return <p>{formatName('react')}</p>
+}
+```
+
+This works because `formatName('react')` is an expression that returns a string. JSX renders that result.
+
+### Example 4 — Ternary operator for conditional rendering
+
+When you need to choose between two visible outputs, the ternary operator is a good fit.
+
+```tsx
+export default function App() {
+  const isLoggedIn = true
+
+  return <p>{isLoggedIn ? 'Welcome back' : 'Please sign in'}</p>
+}
+```
+
+The ternary works well inside JSX because it is an expression. It gives React one value or the other to render.
+
+### Example 5 — `&&` operator for conditional rendering and the `0` bug
+
+The `&&` pattern is useful when you want to render something only when a condition is truthy, but you need to be careful with numeric values.
+
+```tsx
+export default function App() {
+  const unreadCount = 0
+
+  return (
+    <>
+      <p>Inbox</p>
+      {unreadCount > 0 && <span>{unreadCount} unread</span>}
+    </>
+  )
+}
+```
+
+If you write `unreadCount && <span />`, React will render `0` as text when the count is zero because `0` is a real value. Use `unreadCount > 0` or `!!unreadCount` when the left side might be numeric.
+
+### Example 6 — Rendering `null` to show nothing
+
+Sometimes the correct UI is no UI at all. In React, returning `null` means "render nothing."
+
+```tsx
+function WarningBanner({ show }: { show: boolean }) {
+  if (!show) return null
+
+  return <p>Something needs attention.</p>
+}
+```
+
+Returning `null` is the standard way to intentionally render nothing from a component.
+
+### Example 7 — Fragments with both syntaxes
+
+Fragments let you return multiple sibling elements without adding an unnecessary DOM node.
+
+```tsx
+export default function App() {
+  return (
+    <>
+      <h1>Title</h1>
+      <p>Subtitle</p>
+    </>
+  )
+}
+```
+
+```tsx
+import React from 'react'
+
+export default function App() {
+  return (
+    <React.Fragment>
+      <h1>Title</h1>
+      <p>Subtitle</p>
+    </React.Fragment>
+  )
+}
+```
+
+Both versions mean the same thing. The short syntax is more common, and `React.Fragment` is useful when you need the long form for clarity or tooling reasons.
+
+### Example 8 — `className` vs `class`, `htmlFor` vs `for`
+
+JSX uses JavaScript-friendly attribute names instead of some raw HTML names.
+
+```tsx
+export default function App() {
+  return (
+    <form className="space-y-3">
+      <label htmlFor="email">Email</label>
+      <input id="email" className="border" />
+    </form>
+  )
+}
+```
+
+You use `className` instead of `class`, and `htmlFor` instead of `for`. These names line up with how JSX maps attributes into JavaScript props.
+
+### Example 9 — Self-closing tags
+
+In JSX, tags like `input`, `img`, and `br` must be explicitly closed.
+
+```tsx
+export default function App() {
+  return (
+    <>
+      <input />
+      <img src="/avatar.png" alt="Avatar" />
+      <br />
+    </>
+  )
+}
+```
+
+This is stricter than plain HTML because JSX must compile as valid JavaScript syntax.
+
+### Example 10 — Multiple JSX expressions need one parent
+
+You cannot return sibling elements side by side without wrapping them in a parent element or fragment.
+
+```tsx
+export default function App() {
+  return (
+    <div>
+      <h1>Title</h1>
+      <p>Description</p>
+    </div>
+  )
+}
+```
+
+React needs one root JSX expression. A `div` works, and a fragment works too when you do not want the extra DOM node.
+
+### Example 11 — Inline style as an object
+
+Inline styles in JSX use an object, which is why you see double curly braces.
+
+```tsx
+export default function App() {
+  return (
+    <div
+      style={{
+        backgroundColor: 'tomato',
+        padding: '1rem',
+      }}
+    >
+      Styled with an object
+    </div>
+  )
+}
+```
+
+The outer braces mean "this is JavaScript inside JSX." The inner braces create the JavaScript object literal. That is why people say inline styles use "double curly braces."
+
+### Example 12 — Rendering a list inline with `map`
+
+You can build repeated UI by mapping over an array directly inside JSX.
+
+```tsx
+export default function App() {
+  const topics = ['JSX', 'Props', 'State']
+
+  return (
+    <ul>
+      {topics.map((topic) => (
+        <li key={topic}>{topic}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+This is a preview of list rendering in React. The important idea here is that `.map()` returns a new array of JSX elements, which React can render.
+
+### Example 13 — JSX spread attributes
+
+You can pass many props at once with the spread syntax, but you should know exactly what is being spread.
+
+```tsx
+type ButtonProps = {
+  type?: 'button' | 'submit'
+  disabled?: boolean
+  className?: string
+}
+
+function Button(props: ButtonProps) {
+  return <button {...props}>Save</button>
+}
+```
+
+Spread attributes are convenient for forwarding props, but they can also hide what is being passed. Use them intentionally, not blindly.
+
+### Example 14 — Multiline JSX with parentheses for readability
+
+As JSX grows larger, wrapping it in parentheses makes it easier to read and format.
+
+```tsx
+export default function App() {
+  return (
+    <section className="card">
+      <h2>Readable JSX</h2>
+      <p>Use parentheses when your markup spans multiple lines.</p>
+    </section>
+  )
+}
+```
+
+Parentheses are not magic by themselves, but they make multiline JSX much easier to scan and maintain.
+
+<LivePreview id="jsx-basics" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Using `class` instead of `className`.
+**Fix:** Use `className` in JSX.
+**Why:** JSX is JavaScript-based syntax, and React expects the JavaScript-friendly prop name `className`.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using `for` instead of `htmlFor` on labels.
+**Fix:** Use `htmlFor` in JSX labels.
+**Why:** `for` is a reserved word in JavaScript, so JSX uses `htmlFor` as the matching label prop.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Writing `0 && <Component />` and expecting nothing to render.
+**Fix:** Use `count > 0 && <Component />` or `!!count && <Component />`.
+**Why:** `0` is a real renderable value, so React may display it as text.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting to close self-closing tags like `input` or `img`.
+**Fix:** Write `<input />`, `<img />`, and `<br />`.
+**Why:** JSX must compile into valid JavaScript, so tags need explicit closing syntax.
+</Callout>
+
+<Callout type="tip">
+JSX is just JavaScript. You can store JSX in variables, return it from functions, and pass it around as props because it is part of JavaScript expression syntax.
+</Callout>
+
+<Callout type="warning">
+Only expressions belong inside `{}` in JSX. Statements like `if`, `for`, and `while` do not work there, so move that logic above the `return` and render the final expression instead.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is JSX and does the browser understand it?
+**A:** JSX is a syntax extension that lets you write UI in a format that looks similar to HTML inside JavaScript. The browser does not understand JSX directly. A build tool such as Babel or TypeScript transforms it into JavaScript before it runs. So JSX is for developers, while JavaScript is what the runtime actually executes.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why do we use `className` instead of `class`?
+**A:** In JSX, attributes are written as JavaScript props, not raw HTML attributes. `class` is a reserved keyword in JavaScript, so React uses `className` instead. When React renders the final DOM, that value still becomes the regular HTML `class` attribute in the browser.
+</Callout>
+
+## How this is used in real projects
+
+In real product code, JSX is the layer where data, conditions, and UI structure come together. A dashboard screen might render loading states, success states, error banners, filters, tables, and action buttons all in one component tree. JSX makes that readable because the logic stays close to the markup it affects. A teammate can open the file and see what the screen looks like without mentally reconstructing dozens of manual DOM updates.
+
+JSX also matters a lot for consistency in larger teams. Real codebases have shared components, repeated layout patterns, and lots of conditional UI. Clean JSX makes reviews faster because other developers can quickly understand what appears on screen, when it appears, and why. Messy JSX creates confusion fast, especially when conditionals, loops, and event handlers are mixed together without structure.
+
+You also see JSX rules matter in production because mistakes there often lead to subtle bugs. Using the wrong conditional pattern can show stray `0` values. Forgetting a fragment or root wrapper can break rendering. Passing the wrong attributes can harm accessibility. JSX seems simple at first, but mastering its rules makes real React applications safer and easier to maintain.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is JSX? Does the browser understand it directly?
+**A:** JSX is a syntax extension used in React to describe UI with markup-like syntax inside JavaScript. The browser does not understand JSX directly. A compiler such as Babel or TypeScript transforms JSX into JavaScript function calls before the code runs. So JSX improves developer experience, but compiled JavaScript is what the browser actually executes.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between JSX and HTML?
+**A:** JSX looks similar to HTML, but it is not HTML. JSX lives inside JavaScript, follows JavaScript rules, and compiles into JavaScript objects or function calls. That is why it uses rules like `className`, `htmlFor`, explicit self-closing tags, and expressions inside braces. HTML is parsed directly by the browser, while JSX must be compiled first.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why do we use `className` instead of `class` in JSX?
+**A:** JSX treats attributes as JavaScript props rather than raw HTML attributes. Because `class` is a reserved keyword in JavaScript, React uses `className` instead. It is a naming rule that makes JSX fit cleanly into JavaScript syntax. When the UI renders in the browser, React still outputs the normal HTML `class` attribute.
+</Callout>
+
+<Callout type="interview">
+**Q:** What can and cannot go inside `{}` in JSX?
+**A:** Anything inside `{}` must be a JavaScript expression that produces a value. Variables, function calls, ternaries, string operations, and array `.map()` calls are valid because they evaluate to something React can render. Statements such as `if`, `for`, and `while` cannot go directly inside JSX braces because they do not produce a renderable value the same way expressions do. If you need statement logic, you handle it before the returned JSX.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are fragments and why do we need them?
+**A:** Fragments let you return multiple sibling elements from a component without adding an extra wrapper element to the DOM. This is useful when React requires one parent JSX expression, but you do not want to insert an unnecessary `div` into the final markup. You can write fragments with the short syntax `<>...</>` or with `<React.Fragment>...</React.Fragment>`. They help keep the DOM cleaner while satisfying JSX structure rules.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does JSX compile to?
+**A:** JSX compiles to JavaScript function calls that describe the UI tree. Traditionally that means calls such as `React.createElement`, although modern toolchains may use a newer JSX runtime under the hood. The important point is that JSX itself is authoring syntax, not runtime syntax. Developers write JSX, but JavaScript is what actually runs.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which attribute do you use instead of `class` in JSX?"
+  options={["class", "className", "cssClass", "styleName"]}
+  correct={1}
+  explanation="`className` is the correct JSX prop. JSX uses JavaScript-friendly prop names instead of some raw HTML attribute names."
+/>
+
+<Quiz
+  question="What does `<>...</>` mean in React?"
+  options={["A custom component", "A fragment", "An array", "A template string"]}
+  correct={1}
+  explanation="The short `<>...</>` syntax means a fragment. Fragments group sibling elements without adding an extra DOM node."
+/>
+
+<Quiz
+  question="Which of these renders nothing in React?"
+  options={["return undefined", "return false", "return null", "return 0"]}
+  correct={2}
+  explanation="Returning `null` is the standard way to intentionally render nothing from a React component."
+/>
+
+<MarkDone slug="02-jsx" track="react" />

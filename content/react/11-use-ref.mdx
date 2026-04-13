@@ -1,0 +1,514 @@
+---
+title: "useRef"
+description: "Learn what useRef returns, how it differs from state, how to access DOM nodes, and how to store mutable values that persist without causing re-renders."
+level: "beginner"
+minutes: 11
+stage: "Stage 2 — Core React"
+slug: "11-use-ref"
+track: "react"
+---
+
+## Why this exists
+
+Sometimes a component needs to remember something between renders, but changing that thing should not rerender the UI. Other times, a component needs access to a real DOM element so it can focus an input, scroll to a section, measure an element, or control a media player. State is not the right tool for those jobs. That is where `useRef` comes in.
+
+`useRef` matters because React apps often need both kinds of access: access to persistent mutable values and access to real DOM nodes. Without refs, many everyday UI tasks like focusing a search box, storing an interval ID, or reading a previous value would be much more awkward.
+
+## How it works
+
+`useRef` returns an object with one property: `current`. The initial value you pass to `useRef` becomes the first value of that `current` property.
+
+```tsx
+const myRef = useRef(initialValue)
+```
+
+The important difference from state is this: changing `ref.current` does **not** trigger a re-render. That is what makes refs useful for values that should persist but should not update the screen on their own.
+
+There are two big use cases for refs:
+
+1. DOM access
+   When you attach a ref to a JSX element like `ref={inputRef}`, React stores the real DOM node in `inputRef.current`. That lets you call methods like `.focus()` or `.scrollIntoView()`, or measure the element.
+
+2. Persistent mutable values
+   Refs are useful for things like interval IDs, previous values, and flags. These values need to survive between renders, but changing them should not cause the UI to render again.
+
+This is why `useRef` and `useState` are different. State is for UI-affecting data. Changing state tells React to re-render because the visible output may need to change. Ref values are for mutable data React does not track for rendering. If you put visible UI data in a ref and change it, the screen will not update automatically.
+
+Refs are also different from module-level variables. A module-level variable is shared across every usage of that module, which is usually not what you want in component code. A ref belongs to one specific component instance. Each rendered copy of the component gets its own ref object.
+
+When a parent needs access to a DOM node inside a child component, React uses `forwardRef`. And when a child wants to expose a custom API rather than the raw node, `useImperativeHandle` helps shape what the parent receives. Those are more advanced patterns, but they are part of the wider ref story.
+
+## Syntax
+
+```tsx
+const inputRef = useRef<HTMLInputElement | null>(null)
+
+<input ref={inputRef} />
+```
+
+## Code examples
+
+### Example 1 — Basic `useRef`: focus an input
+
+The most common first ref example is focusing an input programmatically.
+
+```tsx
+import { useRef } from 'react'
+
+export default function FocusInput() {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  function focusField() {
+    inputRef.current?.focus()
+  }
+
+  return (
+    <section>
+      <input ref={inputRef} placeholder="Search" />
+      <button onClick={focusField}>Focus input</button>
+    </section>
+  )
+}
+```
+
+The ref gives the component access to the real DOM input element so it can call `.focus()`.
+
+### Example 2 — Scroll to an element
+
+Refs can be used to scroll the page to a specific element.
+
+```tsx
+import { useRef } from 'react'
+
+export default function ScrollToSection() {
+  const sectionRef = useRef<HTMLDivElement | null>(null)
+
+  function scrollToDetails() {
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  return (
+    <section>
+      <button onClick={scrollToDetails}>Jump to details</button>
+
+      <div style={{ height: '600px' }} />
+
+      <div ref={sectionRef}>
+        <h2>Details section</h2>
+      </div>
+    </section>
+  )
+}
+```
+
+This is useful for "jump to section" patterns, validation errors, or guided workflows.
+
+### Example 3 — Measuring a DOM element
+
+Sometimes you need to read width, height, or position from the real DOM.
+
+```tsx
+import { useEffect, useRef, useState } from 'react'
+
+export default function MeasureBox() {
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    const rect = boxRef.current?.getBoundingClientRect()
+
+    if (rect) {
+      setWidth(rect.width)
+    }
+  }, [])
+
+  return (
+    <section>
+      <div ref={boxRef} style={{ width: '240px', border: '1px solid #ccc' }}>
+        Measured box
+      </div>
+      <p>Width: {width}px</p>
+    </section>
+  )
+}
+```
+
+The ref gives access to the real element so you can measure it after render.
+
+### Example 4 — Storing an interval ID
+
+Refs are excellent for storing interval IDs because the ID does not need to render on screen.
+
+```tsx
+import { useRef, useState } from 'react'
+
+export default function IntervalController() {
+  const intervalRef = useRef<number | null>(null)
+  const [seconds, setSeconds] = useState(0)
+
+  function start() {
+    if (intervalRef.current !== null) return
+
+    intervalRef.current = window.setInterval(() => {
+      setSeconds((value) => value + 1)
+    }, 1000)
+  }
+
+  function stop() {
+    if (intervalRef.current !== null) {
+      window.clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }
+
+  return (
+    <section>
+      <p>Seconds: {seconds}</p>
+      <button onClick={start}>Start</button>
+      <button onClick={stop}>Stop</button>
+    </section>
+  )
+}
+```
+
+The interval ID persists between renders, but changing it should not itself rerender the UI.
+
+### Example 5 — Tracking render count with a ref
+
+Refs can store values that survive renders without causing more renders.
+
+```tsx
+import { useEffect, useRef, useState } from 'react'
+
+export default function RenderCounter() {
+  const renderCount = useRef(0)
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    renderCount.current += 1
+  })
+
+  return (
+    <section>
+      <p>Button count: {count}</p>
+      <p>Render count: {renderCount.current}</p>
+      <button onClick={() => setCount((value) => value + 1)}>Increment</button>
+    </section>
+  )
+}
+```
+
+The ref value persists, but updating `renderCount.current` alone would not trigger a rerender.
+
+### Example 6 — Previous value pattern
+
+Refs are often used to remember the previous render's value.
+
+```tsx
+import { useEffect, useRef, useState } from 'react'
+
+export default function PreviousValueExample() {
+  const [name, setName] = useState('Mahesh')
+  const previousName = useRef(name)
+
+  useEffect(() => {
+    previousName.current = name
+  }, [name])
+
+  return (
+    <section>
+      <p>Current: {name}</p>
+      <p>Previous: {previousName.current}</p>
+      <button onClick={() => setName('React learner')}>Rename</button>
+    </section>
+  )
+}
+```
+
+This pattern helps compare the current value with the last render's value.
+
+### Example 7 — Flag to skip the first effect run
+
+A ref can track whether the component has already mounted.
+
+```tsx
+import { useEffect, useRef, useState } from 'react'
+
+export default function SkipFirstRun() {
+  const isFirstRender = useRef(true)
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+
+    console.log('Query changed after first render:', query)
+  }, [query])
+
+  return (
+    <input
+      value={query}
+      onChange={(event) => setQuery(event.target.value)}
+      placeholder="Search"
+    />
+  )
+}
+```
+
+The ref acts as a mutable flag that persists between renders.
+
+### Example 8 — Ref vs state comparison
+
+State rerenders the UI. Refs do not.
+
+```tsx
+import { useRef, useState } from 'react'
+
+export default function RefVsState() {
+  const refCount = useRef(0)
+  const [stateCount, setStateCount] = useState(0)
+
+  function incrementRef() {
+    refCount.current += 1
+    console.log('Ref count:', refCount.current)
+  }
+
+  function incrementState() {
+    setStateCount((value) => value + 1)
+  }
+
+  return (
+    <section>
+      <p>Ref count shown on screen: {refCount.current}</p>
+      <p>State count shown on screen: {stateCount}</p>
+      <button onClick={incrementRef}>Increment ref</button>
+      <button onClick={incrementState}>Increment state</button>
+    </section>
+  )
+}
+```
+
+Clicking "Increment ref" changes the ref value, but the screen does not update until something else rerenders the component.
+
+### Example 9 — `forwardRef`
+
+Sometimes a parent needs access to a child component's internal DOM node.
+
+```tsx
+import { forwardRef, useRef } from 'react'
+
+const TextField = forwardRef<HTMLInputElement, { label: string }>(
+  function TextField({ label }, ref) {
+    return (
+      <label>
+        {label}
+        <input ref={ref} />
+      </label>
+    )
+  },
+)
+
+export default function ParentFocusExample() {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  return (
+    <section>
+      <TextField ref={inputRef} label="Email" />
+      <button onClick={() => inputRef.current?.focus()}>Focus child input</button>
+    </section>
+  )
+}
+```
+
+`forwardRef` lets the parent's ref reach the DOM element inside the child.
+
+### Example 10 — Video player control
+
+Refs can control native media APIs.
+
+```tsx
+import { useRef } from 'react'
+
+export default function VideoControls() {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  function playVideo() {
+    void videoRef.current?.play()
+  }
+
+  function pauseVideo() {
+    videoRef.current?.pause()
+  }
+
+  return (
+    <section>
+      <video
+        ref={videoRef}
+        width="320"
+        src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+      />
+      <button onClick={playVideo}>Play</button>
+      <button onClick={pauseVideo}>Pause</button>
+    </section>
+  )
+}
+```
+
+The ref gives direct access to the real video element methods.
+
+### Example 11 — A complete modal focus example
+
+This example uses refs for autofocus and basic focus control.
+
+```tsx
+import { useEffect, useRef, useState } from 'react'
+
+function Modal({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    closeButtonRef.current?.focus()
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <div role="dialog" aria-modal="true">
+      <h2>Settings</h2>
+      <p>Update your preferences here.</p>
+      <button ref={closeButtonRef} onClick={onClose}>
+        Close modal
+      </button>
+    </div>
+  )
+}
+
+export default function ModalExample() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <section>
+      <button onClick={() => setOpen(true)}>Open modal</button>
+      <Modal open={open} onClose={() => setOpen(false)} />
+    </section>
+  )
+}
+```
+
+When the modal opens, the close button receives focus immediately. This is a practical use of refs in accessible UI work.
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Using `useRef` for data that should affect visible UI.
+**Fix:** Use state for visible UI data and refs only for mutable values that should not trigger renders.
+**Why:** Changing `ref.current` does not rerender the component, so the screen will not automatically update.
+</Callout>
+
+<Callout type="tip">
+`useRef` is perfect for storing interval IDs and timeout IDs because those values must persist between renders but should not themselves change the UI.
+</Callout>
+
+<Callout type="tip">
+Use `useRef` when you need a value that persists but changing it should not rerender the component.
+</Callout>
+
+<Callout type="note">
+Unlike state, reading `ref.current` gives the current mutable value, not a render snapshot. That is useful, but it also means refs do not participate in React's normal rendering model the way state does.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `useRef` and `useState`?
+**A:** `useState` stores data that affects rendering, and updating it triggers a rerender. `useRef` stores a mutable value that persists between renders, but updating `ref.current` does not rerender the component. State is part of React's rendering model, while refs are more like persistent boxes for mutable data. You choose between them based on whether changing the value should update the UI.
+</Callout>
+
+<Callout type="interview">
+**Q:** When would you use `useRef` instead of state?
+**A:** You use `useRef` when you need to remember a value between renders but changing that value should not affect the visible UI directly. Common examples include DOM element access, interval IDs, previous values, and mutable flags. If the value should cause the UI to update, it should usually be state instead. Refs are for persistence without rerendering.
+</Callout>
+
+## How this is used in real projects
+
+In real applications, refs show up anywhere components need to interact with the actual browser environment. Search inputs may auto-focus when a page loads. Error summaries may scroll a field into view. Dropdowns and modals often manage focus for accessibility. Charts and video players may need DOM measurements or native method calls. All of those are common production patterns built on refs.
+
+Refs are also helpful for internal component logic that should not cause visible rerenders. Timer IDs, previous props, debounce flags, and "skip first render" markers are all common examples. These are the kinds of values that matter to the component's behavior but are not themselves UI state.
+
+The key discipline in real projects is choosing between refs and state correctly. If you put too much UI-affecting data in refs, the screen becomes out of sync. If you put too much non-visual mutable data in state, you create unnecessary rerenders and more complexity than needed.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What does `useRef` return and what is it used for?
+**A:** `useRef` returns an object with a `current` property. It is used for two main things: accessing DOM nodes and storing mutable values that should persist between renders without causing rerenders. A ref can point to an input, a video element, or a mutable value like an interval ID. It is a persistent container tied to a specific component instance.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `useRef` and `useState`?
+**A:** `useState` is for data that affects the rendered UI, and updating it triggers a rerender. `useRef` is for mutable data that should persist but should not rerender the component when it changes. State participates in React's rendering lifecycle, while refs do not. That is why refs are useful for DOM access and mutable bookkeeping.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why does changing `ref.current` not trigger a rerender?
+**A:** React does not track `ref.current` changes as part of its render scheduling model. A ref is just a mutable object that React keeps stable between renders. Changing the `current` property mutates that object, but React does not treat it like state. This is what makes refs useful for non-visual data, but it is also why they are the wrong tool for UI-affecting values.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is `forwardRef` and when do you need it?
+**A:** `forwardRef` is a React API that lets a parent pass a ref through a child component to a DOM node or another inner target. You need it when the parent wants direct access to something inside the child, such as focusing the child's input field. Without `forwardRef`, the ref stops at the component boundary. It is most common in reusable input, modal, and design-system components.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the previous value pattern using `useRef`?
+**A:** The previous value pattern stores the last render's value in a ref inside an effect. On the next render, the ref still contains the earlier value, so you can compare old and new values. This is useful for debugging, transition logic, or effects that depend on seeing what changed. It works well because refs persist across renders without causing rerenders.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Does changing `ref.current` trigger a re-render?"
+  options={[
+    "Yes, always",
+    "Only in Strict Mode",
+    "No",
+    "Only if the ref points to a DOM node"
+  ]}
+  correct={2}
+  explanation="Updating `ref.current` does not trigger a rerender. Refs are mutable containers outside React's normal render scheduling."
+/>
+
+<Quiz
+  question="What is the main use of attaching a ref to a JSX element?"
+  options={[
+    "Automatically styling the element",
+    "Accessing the real DOM node",
+    "Turning it into state",
+    "Replacing event handlers"
+  ]}
+  correct={1}
+  explanation="Attaching a ref to an element gives you access to the real DOM node so you can focus it, measure it, scroll it, or call native methods."
+/>
+
+<Quiz
+  question="Where should you usually read or write `ref.current`?"
+  options={[
+    "Inside effects and event handlers",
+    "Only during render",
+    "Only inside reducers",
+    "Only in CSS modules"
+  ]}
+  correct={0}
+  explanation="Refs are usually read or written in effects and event handlers. Reading or mutating them during render should be done very carefully because refs are outside React's normal snapshot model."
+/>
+
+<MarkDone slug="11-use-ref" track="react" />
+<LivePreview id="use-ref-focus" />

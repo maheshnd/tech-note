@@ -1,0 +1,330 @@
+---
+title: "Transitions and deferred rendering"
+description: "Learn how React separates urgent updates from non-urgent work with useTransition, startTransition, and useDeferredValue."
+level: "advanced"
+minutes: 12
+stage: "Stage 7 — Modern React"
+slug: "46-transitions-and-deferred-rendering"
+track: "react"
+---
+
+## Why this exists
+
+Some React updates must feel immediate. If a user types into an input, the text should appear right away. If they click a button, the button should respond instantly. But not every piece of work triggered by that interaction is equally urgent. A large filtered list, a heavy chart, or a secondary panel can often update a little later without hurting the experience.
+
+Before transition APIs, developers often had one frustrating choice: either update everything immediately and risk lag, or invent complicated loading workarounds. Modern React gives us a better model. It lets us tell React which updates are urgent and which can be treated as non-urgent background work.
+
+This topic exists because responsiveness is not just about raw speed. It is about prioritization. `useTransition`, `startTransition`, and `useDeferredValue` help the app stay interactive even when some rendering work is heavy.
+
+## How it works
+
+React treats some updates as urgent by default. Typing into an input is the classic example. The UI must keep up with the user’s hands. If the same interaction also triggers heavy rendering, React can struggle because all the work is competing at the same priority.
+
+Transitions solve that by marking some updates as non-urgent. When you wrap a state update in a transition, React understands that the update matters, but it does not need to block more important interactions. The urgent part, like the controlled input value, can update first. The heavier result list can update a little later.
+
+There are two main transition APIs:
+
+- `useTransition` gives you a pending flag plus a `startTransition` function
+- `startTransition` is the standalone function version when you only need to mark an update as transitional
+
+`useTransition` is helpful when you want to show pending UI. For example, you might show "Updating results..." while the non-urgent work is still in progress.
+
+`useDeferredValue` solves a related but slightly different problem. Instead of marking the state update itself as non-urgent, it lets you keep using a deferred copy of some value. A common example is a search query. The input can update urgently on every keystroke, while a heavy filtered list reads the deferred version and lags slightly behind when necessary.
+
+The mental model is:
+
+- urgent update: the user-facing interaction that must stay responsive
+- transition update: important, but okay to delay
+- deferred value: a lower-priority version of a value for heavier rendering work
+
+These APIs do not magically speed up bad code. If the rendering work is truly massive, you may still need virtualization, better state placement, or simpler components. Transitions help React prioritize work better. They do not remove the work itself.
+
+## Syntax
+
+```tsx
+const [isPending, startTransition] = useTransition()
+
+startTransition(() => {
+  setResultsQuery(inputValue)
+})
+```
+
+```tsx
+const deferredQuery = useDeferredValue(query)
+```
+
+## Code examples
+
+### Example 1 — Search input with urgent text update and non-urgent results update
+
+This is the core transition pattern. The input updates immediately, while the heavy results update runs as a transition.
+
+```tsx
+import { useMemo, useState, useTransition } from 'react'
+
+const products = Array.from({ length: 500 }, (_, index) => `Product ${index + 1}`)
+
+export default function ProductSearch() {
+  const [input, setInput] = useState('')
+  const [query, setQuery] = useState('')
+  const [isPending, startTransition] = useTransition()
+
+  const filteredProducts = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+
+    return products.filter((product) =>
+      product.toLowerCase().includes(normalized),
+    )
+  }, [query])
+
+  function handleChange(nextValue: string) {
+    setInput(nextValue)
+
+    startTransition(() => {
+      setQuery(nextValue)
+    })
+  }
+
+  return (
+    <section>
+      <input
+        value={input}
+        onChange={(event) => handleChange(event.target.value)}
+      />
+      {isPending ? <p>Updating results...</p> : null}
+      <p>Matches: {filteredProducts.length}</p>
+    </section>
+  )
+}
+```
+
+The important detail is that the controlled input state stays urgent. The heavy results state becomes non-urgent.
+
+### Example 2 — `startTransition` in an event handler
+
+Sometimes you do not need the hook version. You just want to mark an update as a transition.
+
+```tsx
+import { startTransition, useState } from 'react'
+
+export default function FilterButtons() {
+  const [filter, setFilter] = useState('all')
+
+  function showPending() {
+    startTransition(() => {
+      setFilter('pending')
+    })
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={showPending}>
+        Pending items
+      </button>
+      <p>Active filter: {filter}</p>
+    </div>
+  )
+}
+```
+
+This is useful when you only need the transition behavior and do not need `isPending`.
+
+### Example 3 — `useTransition` with pending UI
+
+The hook version is better when the user needs feedback.
+
+```tsx
+import { useMemo, useState, useTransition } from 'react'
+
+const reports = Array.from({ length: 300 }, (_, index) => `Report ${index + 1}`)
+
+export default function ReportsView() {
+  const [input, setInput] = useState('')
+  const [query, setQuery] = useState('')
+  const [isPending, startTransition] = useTransition()
+
+  const visibleReports = useMemo(() => {
+    return reports.filter((report) =>
+      report.toLowerCase().includes(query.toLowerCase()),
+    )
+  }, [query])
+
+  return (
+    <section>
+      <input
+        value={input}
+        onChange={(event) => setInput(event.target.value)}
+      />
+      <button
+        type="button"
+        onClick={() =>
+          startTransition(() => {
+            setQuery(input)
+          })
+        }
+      >
+        Apply query
+      </button>
+      <p>{isPending ? 'Applying filter...' : 'Results ready'}</p>
+      <p>Visible reports: {visibleReports.length}</p>
+    </section>
+  )
+}
+```
+
+Pending UI is often what makes transitions feel understandable to the user.
+
+### Example 4 — `useDeferredValue` for a large filtered list
+
+Deferred values are great when you want to keep using a fast-updating input while a heavy render consumes a slightly delayed value.
+
+```tsx
+import { useDeferredValue, useMemo, useState } from 'react'
+
+const customers = Array.from({ length: 600 }, (_, index) => `Customer ${index + 1}`)
+
+export default function CustomerSearch() {
+  const [query, setQuery] = useState('')
+  const deferredQuery = useDeferredValue(query)
+
+  const filteredCustomers = useMemo(() => {
+    return customers.filter((customer) =>
+      customer.toLowerCase().includes(deferredQuery.toLowerCase()),
+    )
+  }, [deferredQuery])
+
+  return (
+    <section>
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <p>Immediate query: {query}</p>
+      <p>Deferred query: {deferredQuery}</p>
+      <p>Matches: {filteredCustomers.length}</p>
+    </section>
+  )
+}
+```
+
+The input feels immediate, while the heavier filtering work can lag one step behind when React needs to keep the interface responsive.
+
+### Example 5 — No transition vs transition behavior
+
+This side-by-side idea helps explain the goal more clearly than the API alone.
+
+```tsx
+// Without transition:
+setInput(nextValue)
+setQuery(nextValue)
+
+// With transition:
+setInput(nextValue)
+startTransition(() => {
+  setQuery(nextValue)
+})
+```
+
+Without the transition, both updates compete at the same urgency. With the transition, the input stays high-priority while the heavier results update becomes lower-priority work.
+
+<LivePreview id="transitions-deferred" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Wrapping the controlled input state itself in a transition.
+**Fix:** Keep the input update urgent and transition the heavier derived work instead.
+**Why:** The text field is the interaction the user feels directly, so it should not lag.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Expecting transitions to make slow code fast.
+**Fix:** Use transitions for prioritization, but still optimize heavy rendering when needed.
+**Why:** Transitions change scheduling priority, not the total amount of work.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using `useDeferredValue` everywhere instead of fixing state placement or expensive rendering.
+**Fix:** Use it when a deferred version of a value genuinely improves responsiveness.
+**Why:** It is a focused tool, not a universal performance patch.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting to show pending UI when the user might wonder whether work is still happening.
+**Fix:** Use the pending state from `useTransition` when feedback would improve the experience.
+**Why:** Priority management is more understandable when the user sees that background work is still progressing.
+</Callout>
+
+<Callout type="tip">
+If the user’s direct interaction must feel instant, keep that update urgent. Transition the secondary rendering work instead.
+</Callout>
+
+## How this is used in real projects
+
+In real product apps, transitions often show up around search, filtering, dashboards, and tabbed analytics views. An insurance operations screen might let a user type policy numbers, switch claim status filters, or jump between queues while large tables and side summaries recalculate. If those recalculations run at the same priority as the typing interaction, the UI can feel sticky. Transitions let the app preserve responsiveness while still updating the heavier results.
+
+`useDeferredValue` is especially useful when one piece of state is both immediate and computationally expensive downstream. Search UIs, live filters, and report builders are common examples. The input still reflects every keystroke right away, but the expensive part of the tree can render against the deferred value when React needs breathing room.
+
+The production lesson is not just "use more transition hooks." It is to think about the user’s sense of control. Which updates must feel immediate? Which updates can complete a moment later? That prioritization mindset usually leads to better UX than raw micro-optimization alone.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What problem do transitions solve in React?
+**A:** Transitions let React treat some updates as non-urgent so urgent interactions can stay responsive. They are especially useful when an interaction triggers both immediate UI updates and heavier rendering work, such as filtering a large list. Instead of forcing all updates to compete at the same priority, transitions help React schedule them more intelligently. The main benefit is responsiveness, not reducing the amount of work itself.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `useTransition` and `startTransition`?
+**A:** `useTransition` gives you both a `startTransition` function and an `isPending` flag, which is useful when you want to show pending UI. `startTransition` is the standalone function form when you only need to mark an update as transitional and do not need the pending state from the hook. They are closely related APIs, but the hook is better when the UI needs feedback about the transition.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does `useDeferredValue` do?
+**A:** `useDeferredValue` gives you a lower-priority version of some state or prop. It is useful when one part of the UI must update immediately, like a controlled input, while a heavier part of the tree can safely render against a slightly delayed version. This helps React keep urgent interactions responsive. It does not change the original value; it gives the heavy consumer a deferred version to work with.
+</Callout>
+
+<Callout type="interview">
+**Q:** When would transitions not be enough?
+**A:** Transitions help prioritize work, but they do not remove work. If the app is slow because the component tree is too large, rendering is too expensive, or state placement causes huge rerender chains, you may still need memoization, virtualization, better architecture, or simpler UI. A strong answer explains that transitions are one performance tool, not the whole performance strategy.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which update should usually stay urgent in a search UI?"
+  options={[
+    "The controlled input value",
+    "The heavy filtered results list",
+    "The analytics request",
+    "The background chart refresh"
+  ]}
+  correct={0}
+  explanation="The input value should stay urgent because the user directly feels typing latency. The heavier list update is the better candidate for a transition."
+/>
+
+<Quiz
+  question="What does `useDeferredValue` give you?"
+  options={[
+    "A cached component tree",
+    "A lower-priority version of a value",
+    "A replacement for useState",
+    "An automatically memoized callback"
+  ]}
+  correct={1}
+  explanation="`useDeferredValue` gives you a deferred version of a value so heavier rendering work can lag behind urgent updates when needed."
+/>
+
+<Quiz
+  question="What is the main role of transitions?"
+  options={[
+    "Making all code run faster",
+    "Eliminating the need for memoization",
+    "Changing update priority so urgent interactions stay responsive",
+    "Replacing loading states"
+  ]}
+  correct={2}
+  explanation="Transitions help React prioritize updates. They do not eliminate work, but they help keep urgent interactions responsive while non-urgent work finishes."
+/>
+
+<MarkDone slug="46-transitions-and-deferred-rendering" track="react" />

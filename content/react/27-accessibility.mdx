@@ -1,0 +1,353 @@
+---
+title: "Accessibility in React"
+description: "Learn how to build React interfaces that work for keyboard users, screen reader users, and users who need clear semantics, focus management, and accessible feedback."
+level: "intermediate"
+minutes: 10
+stage: "Stage 5 — Real World"
+slug: "27-accessibility"
+track: "react"
+---
+
+## Why this exists
+
+Accessibility is not an optional extra layer added at the end of a project. It is part of building software that real people can use. Users may rely on keyboards instead of mice, screen readers instead of sight, strong focus indicators instead of guesswork, and semantic structure instead of visual layout alone. If the UI ignores those needs, the app becomes broken for part of its audience.
+
+This matters for legal, moral, and practical reasons. Many teams must meet accessibility requirements. More importantly, accessible interfaces are simply better interfaces. Clear semantics, keyboard support, proper labels, and good focus behavior help everyone, not only users with permanent disabilities.
+
+React does not automatically make an app accessible or inaccessible. It gives you the tools to render HTML. The responsibility is still on us to choose the right elements, manage focus, wire up labels, and use ARIA correctly when native HTML is not enough.
+
+## How it works
+
+Accessibility in React starts with semantic HTML. Use the right element for the right purpose:
+
+- `button` for actions
+- `a` for navigation
+- `label` for form labels
+- `header`, `main`, and `nav` for page structure
+
+This matters because browsers and assistive technologies already understand these elements. Good semantics reduce the amount of ARIA you need.
+
+Keyboard navigation is another core rule. Every interactive element must be reachable and usable from the keyboard. If a custom interactive element uses a `div`, you have to rebuild keyboard behavior that a real `button` would have provided for free. That is why native elements are preferred whenever possible.
+
+Focus management is about where keyboard focus goes after an interaction. When a modal opens, focus should move into it. When it closes, focus should usually return to the element that opened it. Without focus management, keyboard and screen reader users can become lost.
+
+ARIA is a set of attributes that helps describe UI semantics when native HTML alone is not enough. Common examples include:
+
+- `aria-label`
+- `aria-labelledby`
+- `aria-describedby`
+- `aria-live`
+
+The key rule is: prefer native HTML first, then use ARIA to fill the gaps. ARIA should support semantics, not replace proper HTML unnecessarily.
+
+Accessible forms need:
+
+- a label for every input
+- error messages connected with `aria-describedby`
+- clear validation feedback
+
+Accessible modals need:
+
+- `role="dialog"`
+- `aria-modal="true"`
+- focus moved into the modal
+- Escape support to close
+- focus kept inside while the modal is open
+
+Announcements for dynamic content often use `aria-live` regions so screen readers are notified when something important changes, such as a search result count or save confirmation.
+
+A skip link lets keyboard users jump past repeated navigation directly to the main content. This becomes especially important on larger layouts.
+
+Screen reader support should also be tested in practice with tools like VoiceOver or NVDA. Accessibility is not only a code exercise. It needs real interaction checks.
+
+## Syntax
+
+```tsx
+<button type="button">Save</button>
+```
+
+## Code examples
+
+### Example 1 — Semantic HTML: wrong vs right
+
+Structure matters to assistive technologies.
+
+```tsx
+function WrongPage() {
+  return (
+    <div>
+      <div>Site title</div>
+      <div>Navigation</div>
+      <div>Page content</div>
+      <div>Open menu</div>
+    </div>
+  )
+}
+```
+
+```tsx
+function RightPage() {
+  return (
+    <>
+      <header>Site title</header>
+      <nav>Navigation</nav>
+      <main>Page content</main>
+      <button type="button">Open menu</button>
+    </>
+  )
+}
+```
+
+The second version gives the browser and assistive tools meaningful structure.
+
+### Example 2 — Button vs div for click
+
+Native buttons are almost always the right choice.
+
+```tsx
+function WrongAction() {
+  return <div onClick={() => console.log('clicked')}>Save</div>
+}
+```
+
+```tsx
+function RightAction() {
+  return (
+    <button type="button" onClick={() => console.log('clicked')}>
+      Save
+    </button>
+  )
+}
+```
+
+The button automatically supports keyboard interaction, focus, and correct semantics.
+
+### Example 3 — Keyboard accessible custom component
+
+If you must build a custom interactive element, you must support keyboard interaction too.
+
+```tsx
+function CustomButton({
+  onActivate,
+}: {
+  onActivate: () => void
+}) {
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onActivate()
+    }
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onActivate}
+      onKeyDown={handleKeyDown}
+    >
+      Activate
+    </div>
+  )
+}
+```
+
+This is still more work than using a real button, which is why native elements are preferred.
+
+### Example 4 — Focus trap in a modal
+
+When a modal opens, focus should stay inside it.
+
+```tsx
+import { useEffect, useRef } from 'react'
+
+function Modal({ onClose }: { onClose: () => void }) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    closeButtonRef.current?.focus()
+  }, [])
+
+  return (
+    <div role="dialog" aria-modal="true">
+      <p>Modal content</p>
+      <button ref={closeButtonRef} onClick={onClose}>
+        Close
+      </button>
+    </div>
+  )
+}
+```
+
+A full focus trap would also cycle focus within the modal’s interactive elements.
+
+### Example 5 — `aria-label` and `aria-labelledby`
+
+Icon buttons need accessible names.
+
+```tsx
+function IconButton() {
+  return (
+    <button type="button" aria-label="Close dialog">
+      ×
+    </button>
+  )
+}
+```
+
+```tsx
+function LabelledSection() {
+  return (
+    <section aria-labelledby="profile-title">
+      <h2 id="profile-title">Profile settings</h2>
+      <p>Settings content</p>
+    </section>
+  )
+}
+```
+
+### Example 6 — Accessible form
+
+Every field needs a label, and errors should be linked to fields.
+
+```tsx
+function ContactForm() {
+  const hasError = true
+
+  return (
+    <form>
+      <label htmlFor="email">Email</label>
+      <input
+        id="email"
+        name="email"
+        aria-describedby={hasError ? 'email-error' : undefined}
+      />
+      {hasError ? <p id="email-error">Email is required.</p> : null}
+    </form>
+  )
+}
+```
+
+### Example 7 — `aria-live`
+
+Dynamic result counts should be announced.
+
+```tsx
+function SearchStatus({ count }: { count: number }) {
+  return (
+    <p aria-live="polite">
+      {count} results found
+    </p>
+  )
+}
+```
+
+### Example 8 — Skip to content link
+
+Skip links help keyboard users bypass repeated navigation.
+
+```tsx
+function AppLayout() {
+  return (
+    <>
+      <a href="#main-content">Skip to content</a>
+      <nav>Main navigation</nav>
+      <main id="main-content">Page content</main>
+    </>
+  )
+}
+```
+
+### Example 9 — Complete accessible modal
+
+This combines the core modal accessibility ideas.
+
+```tsx
+import { useEffect, useRef } from 'react'
+
+function AccessibleModal({
+  onClose,
+}: {
+  onClose: () => void
+}) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    closeButtonRef.current?.focus()
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [onClose])
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title">Settings</h2>
+      <p>Manage your preferences here.</p>
+      <button ref={closeButtonRef} type="button" onClick={onClose}>
+        Close
+      </button>
+    </div>
+  )
+}
+```
+
+<LivePreview id="accessibility" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Using `div` elements for buttons and links when native elements are available.
+**Fix:** Use the correct semantic HTML element first.
+**Why:** Native elements give you keyboard behavior, semantics, and browser support automatically.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Showing form errors visually but not connecting them to the relevant input.
+**Fix:** Use labels and `aria-describedby` for error messages.
+**Why:** Screen reader users need the same validation context, not just visible red text.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Opening a modal without moving focus into it.
+**Fix:** Manage focus intentionally when opening and closing dialogs.
+**Why:** Keyboard and assistive-technology users can otherwise lose track of where they are.
+</Callout>
+
+## How this is used in real projects
+
+Accessibility affects almost every UI system in a real app: forms, dialogs, tables, navigation, menus, live search, and validation messages. Teams that build reusable design systems usually encode many of these rules directly into shared components so product teams do not have to rediscover them every time.
+
+This is also one of the clearest examples of why “works on my machine” is not enough. A feature may look fine visually and still be hard or impossible to use with a keyboard or screen reader. Real accessibility work means testing interaction patterns, not just writing some attributes.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is ARIA and when should you use it?
+**A:** ARIA is a set of accessibility attributes that help describe UI semantics when native HTML is not enough. You should use ARIA to supplement correct semantic HTML, not to replace it unnecessarily. Native elements should always be the first choice when they already express the right meaning.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is focus management and why does it matter?
+**A:** Focus management is controlling where keyboard focus moves after interactions such as opening a modal, closing a dialog, or submitting a form. It matters because keyboard and screen reader users rely on focus position to understand where they are in the UI.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a focus trap?
+**A:** A focus trap keeps keyboard focus inside a modal or other temporary layer while it is open. This prevents users from tabbing into the background content and losing context.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you make a custom button accessible?
+**A:** The best answer is to use a real `button` whenever possible. If you truly need a custom element, you must add `role="button"`, `tabIndex={0}`, click handling, and keyboard support for Enter and Space, plus visible focus styling.
+</Callout>
+
+<MarkDone slug="27-accessibility" track="react" />

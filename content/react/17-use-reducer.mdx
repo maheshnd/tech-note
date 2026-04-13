@@ -1,0 +1,627 @@
+---
+title: "useReducer"
+description: "Learn how reducers organize complex state updates with actions, dispatch, and pure update logic, and when they are a better fit than useState."
+level: "intermediate"
+minutes: 10
+stage: "Stage 4 — Intermediate"
+slug: "17-use-reducer"
+track: "react"
+---
+
+## Why this exists
+
+`useState` is excellent for simple state, but it starts to feel awkward when one feature has many related values and many different ways those values can change. A form may need fields, validation errors, touched flags, and submit status. A cart may need to add items, remove items, update quantities, and clear everything. A multi-step flow may need to move forward, backward, update fields, and submit. In those situations, state logic can become scattered across many event handlers.
+
+`useReducer` exists to bring that update logic into one place. Instead of each event handler deciding how to change state directly, handlers dispatch actions, and a reducer function decides what the next state should be. That makes the update logic more predictable, easier to test, and easier to scale as the number of actions grows.
+
+This matters because many real React features are not just "set one value to something else." They are state machines with several actions and related sub-values. A reducer helps you model that complexity clearly.
+
+## How it works
+
+`useReducer` follows a simple idea:
+
+- current state
+- action
+- reducer returns new state
+
+The reducer is a pure function. It receives the current state and an action object, and it returns the next state. It must not mutate the existing state, perform side effects, or depend on hidden outside values. The same input should always produce the same output.
+
+An action is usually an object with a `type` field and, when needed, a `payload`.
+
+```tsx
+{ type: 'increment' }
+{ type: 'addByAmount', payload: 5 }
+```
+
+`dispatch` is the function returned by `useReducer`. Calling `dispatch(action)` sends the action to the reducer, and React uses the reducer’s returned value as the next state.
+
+The reducer pattern is useful because it keeps state update rules in one place. Instead of having add logic in one function, remove logic in another, validation logic somewhere else, and reset logic in yet another handler, the reducer becomes the single home for state transitions.
+
+Reducers usually use a `switch` statement on `action.type`. That makes the different transitions explicit and easy to scan. It also makes it obvious what actions the state supports.
+
+`useReducer` is usually a better fit than `useState` when:
+
+- state has multiple related fields
+- many actions can change the same state
+- update rules are getting repetitive or hard to follow
+- you want easier testing of state transitions
+
+`useState` is still better for simple independent values. You should not reach for `useReducer` automatically. The goal is clarity, not ceremony.
+
+Reducers become even more powerful when combined with `useContext`. That pattern creates a simple shared store for a part of the app without using an external library. People sometimes call this the "Redux-lite" pattern: reducer for update logic, context for sharing state and dispatch.
+
+Action creators are another common pattern. These are helper functions that return action objects. They are optional, but they can make dispatch calls more consistent and readable.
+
+## Syntax
+
+```tsx
+const [state, dispatch] = useReducer(reducer, initialState)
+```
+
+## Code examples
+
+### Example 1 — Simple counter with `useReducer`
+
+This is the smallest reducer example.
+
+```tsx
+import { useReducer } from 'react'
+
+type CounterAction =
+  | { type: 'increment' }
+  | { type: 'decrement' }
+  | { type: 'reset' }
+
+function counterReducer(state: number, action: CounterAction): number {
+  switch (action.type) {
+    case 'increment':
+      return state + 1
+    case 'decrement':
+      return state - 1
+    case 'reset':
+      return 0
+    default:
+      return state
+  }
+}
+
+export default function CounterWithReducer() {
+  const [count, dispatch] = useReducer(counterReducer, 0)
+
+  return (
+    <section>
+      <p>Count: {count}</p>
+      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+      <button onClick={() => dispatch({ type: 'decrement' })}>-</button>
+      <button onClick={() => dispatch({ type: 'reset' })}>Reset</button>
+    </section>
+  )
+}
+```
+
+### Example 2 — The same counter with `useState`
+
+This comparison shows that `useReducer` is not always necessary.
+
+```tsx
+import { useState } from 'react'
+
+export default function CounterWithState() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <section>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount((value) => value + 1)}>+</button>
+      <button onClick={() => setCount((value) => value - 1)}>-</button>
+      <button onClick={() => setCount(0)}>Reset</button>
+    </section>
+  )
+}
+```
+
+For a tiny counter, `useState` is usually simpler. Reducers become more useful as state complexity grows.
+
+### Example 3 — `useReducer` with multiple action types
+
+Reducers shine when one state supports several actions.
+
+```tsx
+import { useReducer } from 'react'
+
+type Status = 'idle' | 'loading' | 'success' | 'error'
+
+type StatusAction =
+  | { type: 'start' }
+  | { type: 'succeed' }
+  | { type: 'fail' }
+  | { type: 'reset' }
+
+function statusReducer(state: Status, action: StatusAction): Status {
+  switch (action.type) {
+    case 'start':
+      return 'loading'
+    case 'succeed':
+      return 'success'
+    case 'fail':
+      return 'error'
+    case 'reset':
+      return 'idle'
+    default:
+      return state
+  }
+}
+```
+
+This is more readable than many unrelated state setters spread around the component.
+
+### Example 4 — `useReducer` with payload
+
+Actions often need extra data.
+
+```tsx
+import { useReducer } from 'react'
+
+type CounterAction =
+  | { type: 'increment' }
+  | { type: 'addByAmount'; payload: number }
+
+function reducer(state: number, action: CounterAction): number {
+  switch (action.type) {
+    case 'increment':
+      return state + 1
+    case 'addByAmount':
+      return state + action.payload
+    default:
+      return state
+  }
+}
+
+export default function AddByAmountCounter() {
+  const [count, dispatch] = useReducer(reducer, 0)
+
+  return (
+    <section>
+      <p>Count: {count}</p>
+      <button onClick={() => dispatch({ type: 'addByAmount', payload: 5 })}>
+        Add 5
+      </button>
+    </section>
+  )
+}
+```
+
+The payload carries the data needed for that state transition.
+
+### Example 5 — Todo list with `useReducer`
+
+This is a realistic reducer case with several related actions.
+
+```tsx
+import { useReducer, useState } from 'react'
+
+type Todo = {
+  id: number
+  text: string
+  done: boolean
+}
+
+type TodoAction =
+  | { type: 'add'; payload: string }
+  | { type: 'toggle'; payload: number }
+  | { type: 'delete'; payload: number }
+  | { type: 'clearCompleted' }
+
+function todoReducer(state: Todo[], action: TodoAction): Todo[] {
+  switch (action.type) {
+    case 'add':
+      return [
+        ...state,
+        { id: Date.now(), text: action.payload, done: false },
+      ]
+    case 'toggle':
+      return state.map((todo) =>
+        todo.id === action.payload ? { ...todo, done: !todo.done } : todo,
+      )
+    case 'delete':
+      return state.filter((todo) => todo.id !== action.payload)
+    case 'clearCompleted':
+      return state.filter((todo) => !todo.done)
+    default:
+      return state
+  }
+}
+
+export default function TodoReducerExample() {
+  const [todos, dispatch] = useReducer(todoReducer, [])
+  const [draft, setDraft] = useState('')
+
+  return (
+    <section>
+      <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+      <button onClick={() => dispatch({ type: 'add', payload: draft })}>Add</button>
+      <button onClick={() => dispatch({ type: 'clearCompleted' })}>
+        Clear completed
+      </button>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            <button onClick={() => dispatch({ type: 'toggle', payload: todo.id })}>
+              {todo.done ? 'Undo' : 'Done'}
+            </button>
+            {todo.text}
+            <button onClick={() => dispatch({ type: 'delete', payload: todo.id })}>
+              Delete
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+### Example 6 — Form state with `useReducer`
+
+Reducers work well when form state has several related fields.
+
+```tsx
+import { useReducer } from 'react'
+
+type FormState = {
+  name: string
+  email: string
+  touched: boolean
+  submitted: boolean
+}
+
+type FormAction =
+  | { type: 'updateField'; field: 'name' | 'email'; value: string }
+  | { type: 'touch' }
+  | { type: 'submit' }
+  | { type: 'reset' }
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'updateField':
+      return { ...state, [action.field]: action.value }
+    case 'touch':
+      return { ...state, touched: true }
+    case 'submit':
+      return { ...state, submitted: true }
+    case 'reset':
+      return { name: '', email: '', touched: false, submitted: false }
+    default:
+      return state
+  }
+}
+```
+
+One reducer can describe the whole form lifecycle.
+
+### Example 7 — Multi-step form with `useReducer`
+
+Multi-step flows are a great fit for reducer logic.
+
+```tsx
+import { useReducer } from 'react'
+
+type MultiStepState = {
+  step: number
+  name: string
+  email: string
+  submitted: boolean
+}
+
+type MultiStepAction =
+  | { type: 'next' }
+  | { type: 'previous' }
+  | { type: 'updateField'; field: 'name' | 'email'; value: string }
+  | { type: 'submit' }
+
+function multiStepReducer(
+  state: MultiStepState,
+  action: MultiStepAction,
+): MultiStepState {
+  switch (action.type) {
+    case 'next':
+      return { ...state, step: state.step + 1 }
+    case 'previous':
+      return { ...state, step: state.step - 1 }
+    case 'updateField':
+      return { ...state, [action.field]: action.value }
+    case 'submit':
+      return { ...state, submitted: true }
+    default:
+      return state
+  }
+}
+```
+
+This keeps step transitions and field updates in one predictable state machine.
+
+### Example 8 — `useReducer` + `useContext`
+
+This is the shared-state pattern without an external library.
+
+```tsx
+import {
+  createContext,
+  useContext,
+  useReducer,
+  type Dispatch,
+  type ReactNode,
+} from 'react'
+
+type CounterAction = { type: 'increment' } | { type: 'decrement' }
+
+const CounterStateContext = createContext(0)
+const CounterDispatchContext = createContext<Dispatch<CounterAction> | null>(null)
+
+function reducer(state: number, action: CounterAction): number {
+  switch (action.type) {
+    case 'increment':
+      return state + 1
+    case 'decrement':
+      return state - 1
+    default:
+      return state
+  }
+}
+
+function CounterProvider({ children }: { children: ReactNode }) {
+  const [count, dispatch] = useReducer(reducer, 0)
+
+  return (
+    <CounterStateContext.Provider value={count}>
+      <CounterDispatchContext.Provider value={dispatch}>
+        {children}
+      </CounterDispatchContext.Provider>
+    </CounterStateContext.Provider>
+  )
+}
+
+function useCounterDispatch() {
+  const dispatch = useContext(CounterDispatchContext)
+
+  if (!dispatch) {
+    throw new Error('useCounterDispatch must be used within CounterProvider')
+  }
+
+  return dispatch
+}
+```
+
+This pattern becomes very useful for shared feature state.
+
+### Example 9 — Action creators
+
+Action creators wrap action objects in helper functions.
+
+```tsx
+type TodoAction =
+  | { type: 'add'; payload: string }
+  | { type: 'delete'; payload: number }
+
+function addTodo(text: string): TodoAction {
+  return { type: 'add', payload: text }
+}
+
+function deleteTodo(id: number): TodoAction {
+  return { type: 'delete', payload: id }
+}
+
+dispatch(addTodo('Learn reducers'))
+dispatch(deleteTodo(2))
+```
+
+They are optional, but they make dispatch calls easier to reuse and standardize.
+
+### Example 10 — Complete example: shopping cart
+
+This is a full reducer example with several actions working together.
+
+```tsx
+import { useMemo, useReducer } from 'react'
+
+type CartItem = {
+  id: number
+  name: string
+  price: number
+  quantity: number
+}
+
+type CartState = {
+  items: CartItem[]
+}
+
+type CartAction =
+  | { type: 'add'; payload: { id: number; name: string; price: number } }
+  | { type: 'remove'; payload: number }
+  | { type: 'updateQuantity'; payload: { id: number; quantity: number } }
+  | { type: 'clear' }
+
+function cartReducer(state: CartState, action: CartAction): CartState {
+  switch (action.type) {
+    case 'add': {
+      const existingItem = state.items.find(
+        (item) => item.id === action.payload.id,
+      )
+
+      if (existingItem) {
+        return {
+          items: state.items.map((item) =>
+            item.id === action.payload.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item,
+          ),
+        }
+      }
+
+      return {
+        items: [...state.items, { ...action.payload, quantity: 1 }],
+      }
+    }
+    case 'remove':
+      return {
+        items: state.items.filter((item) => item.id !== action.payload),
+      }
+    case 'updateQuantity':
+      return {
+        items: state.items
+          .map((item) =>
+            item.id === action.payload.id
+              ? { ...item, quantity: action.payload.quantity }
+              : item,
+          )
+          .filter((item) => item.quantity > 0),
+      }
+    case 'clear':
+      return { items: [] }
+    default:
+      return state
+  }
+}
+
+export default function ShoppingCart() {
+  const [state, dispatch] = useReducer(cartReducer, { items: [] })
+
+  const total = useMemo(() => {
+    return state.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0,
+    )
+  }, [state.items])
+
+  return (
+    <section>
+      <button
+        onClick={() =>
+          dispatch({
+            type: 'add',
+            payload: { id: 1, name: 'Keyboard', price: 100 },
+          })
+        }
+      >
+        Add keyboard
+      </button>
+      <p>Total: ${total}</p>
+    </section>
+  )
+}
+```
+
+This is exactly the kind of multi-action feature where reducers help.
+
+<LivePreview id="use-reducer" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Mutating state inside the reducer.
+**Fix:** Always return new arrays and objects.
+**Why:** Reducers must be pure and immutable so React can track updates correctly and your state transitions stay predictable.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using `useReducer` for very simple one-value state.
+**Fix:** Prefer `useState` when the state is small and straightforward.
+**Why:** Reducers add structure, which is valuable for complexity but unnecessary for tiny cases.
+</Callout>
+
+<Callout type="tip">
+Use `useReducer` when you have 3+ state values that change together.
+</Callout>
+
+<Callout type="tip">
+Reducers are easy to test — they are just pure functions.
+</Callout>
+
+<Callout type="warning">
+Never mutate state inside the reducer — always return a new object.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `useState` and `useReducer`?
+**A:** `useState` is simpler and works well for small independent values. `useReducer` is better when state has multiple related fields or many possible update actions. Reducers centralize transition logic in one pure function, which often makes complex state easier to manage.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why must reducers be pure functions?
+**A:** Reducers must be pure so the same input state and action always produce the same next state. Purity makes reducer logic predictable, testable, and free from side effects. A reducer should describe state transitions only, not perform async work, logging, or DOM manipulation.
+</Callout>
+
+## How this is used in real projects
+
+Reducers are common in real features that have many actions but still belong to one part of the UI. Shopping carts, complex forms, filter panels, multi-step checkouts, onboarding flows, and rich dashboard widgets often benefit from reducer logic. These features usually have several related values and many possible state transitions, which is exactly where reducers help.
+
+Reducers also make shared feature state easier to scale when combined with context. A provider can hold the reducer state and expose dispatch across a part of the app. This is often enough for medium-sized apps before needing a dedicated state library.
+
+One of the biggest practical benefits is maintainability. When a new action is added, there is one obvious place to put that logic. That makes reducers easier to extend and review than scattered `setState` calls across many handlers.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is `useReducer` and when would you use it over `useState`?
+**A:** `useReducer` is a React hook that manages state through a reducer function and dispatched actions. It is a good choice when state has multiple related values, many possible update actions, or transition logic that is becoming hard to manage with scattered `useState` calls.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the reducer pattern?
+**A:** The reducer pattern is the idea that state transitions should be handled by a pure function that receives the current state and an action and returns the next state. Components dispatch actions, and the reducer decides how state changes. This keeps update rules centralized and explicit.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why must reducer functions be pure?
+**A:** Reducers must be pure because they should only compute the next state from the current state and the action. If they mutate state or perform side effects, state transitions become unpredictable and harder to test.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you combine `useReducer` with `useContext` for global state?
+**A:** A common pattern is to create one context for the reducer state and another for the dispatch function, then wrap part of the app in a provider that runs `useReducer`. Descendant components read the state from one context and dispatch actions through the other. This creates a shared store without an external library.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is an action and what does it typically look like?
+**A:** An action is an object that describes what happened and what data is needed for the state transition. It usually has a `type` field and sometimes a `payload`, for example `{ type: 'addTodo', payload: 'Read docs' }`.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does dispatch do?"
+  options={[
+    "Sends an action to the reducer to update state",
+    "Mutates the current state directly",
+    "Skips the reducer and updates the DOM",
+    "Runs effects immediately"
+  ]}
+  correct={0}
+  explanation="Dispatch sends an action object to the reducer. The reducer then returns the next state based on the current state and that action."
+/>
+
+<Quiz
+  question="What must a reducer always do?"
+  options={[
+    "Return a new state object without mutating the old one",
+    "Call fetch when state changes",
+    "Update localStorage directly",
+    "Trigger component re-renders manually"
+  ]}
+  correct={0}
+  explanation="A reducer must return the next state immutably. It should not mutate the old state or perform side effects."
+/>
+
+<Quiz
+  question="When should you prefer useReducer over useState?"
+  options={[
+    "When state has multiple sub-values or complex update logic",
+    "Whenever a component has any state at all",
+    "Only for server data",
+    "Only when using TypeScript"
+  ]}
+  correct={0}
+  explanation="useReducer is most helpful when state updates are complex, related, and easier to express as explicit actions handled in one reducer."
+/>
+
+<MarkDone slug="17-use-reducer" track="react" />

@@ -1,0 +1,439 @@
+---
+title: "Server components"
+description: "Learn what React Server Components are, how they differ from Client Components, how hydration fits in, and how SSR, SSG, ISR, and client rendering relate to the server-first model."
+level: "advanced"
+minutes: 12
+stage: "Stage 6 — Advanced"
+slug: "31-server-components"
+track: "react"
+---
+
+## Why this exists
+
+Modern React is no longer only a browser story. In frameworks like Next.js App Router, React can render part of the UI on the server, send HTML and data to the browser, and hydrate only the pieces that actually need client-side interactivity. This changes how we think about data fetching, performance, bundle size, and even where code is allowed to run.
+
+Server Components exist to solve a common frontend problem: too much JavaScript is shipped to the browser for work that never needed to happen there. If a component only reads data and returns markup, forcing the browser to download and execute that logic is wasteful. Server Components let that work stay on the server.
+
+This topic matters because the boundary between server and client is now one of the most important architecture decisions in advanced React apps. If we understand that boundary clearly, performance, data fetching, and security choices become much easier.
+
+## How it works
+
+A React Server Component is a component that renders only on the server. It does not ship its full component logic to the browser the way a Client Component does. Instead, the server runs the component, resolves its data, and sends the result into the overall UI tree.
+
+In App Router, components are Server Components by default unless a file starts with `'use client'`. That default matters because it flips the old mental model. Instead of assuming everything runs in the browser, we assume components stay on the server unless they need browser-only features.
+
+What can you do in a Server Component that you cannot do in a Client Component?
+
+- `async` and `await` directly in the component body
+- access databases, files, and environment secrets safely
+- import server-only packages and server-only modules
+
+What can you not do in a Server Component?
+
+- use `useState`, `useEffect`, or client hooks
+- attach event handlers like `onClick`
+- access browser APIs such as `window`, `document`, or `localStorage`
+
+That leads to the key composition rule: Server Components prepare data and structure, while Client Components handle interaction. A Server Component can fetch data, then pass that data as props into a Client Component that manages clicks, typing, toggles, or local UI state.
+
+This helps performance in several ways:
+
+- less JavaScript is shipped to the browser
+- data fetching becomes simpler because it can happen on the server directly
+- secrets and database access stay off the client
+
+The mental model that helps most is this: Server Components are async templates that run on the server. Client Components are interactive islands that run in the browser.
+
+To understand where Server Components fit, it also helps to compare the major rendering modes:
+
+- CSR, client-side rendering: the browser receives a light shell and builds most of the UI after JavaScript loads
+- SSR, server-side rendering: the server renders HTML for each request
+- SSG, static site generation: HTML is produced at build time
+- ISR, incremental static regeneration: a static page is cached and refreshed later based on revalidation rules
+
+Hydration is the step where React attaches event handlers and client state to server-rendered HTML. Without hydration, the HTML can appear on the page, but interactive widgets would not respond. Hydration is what turns server-rendered markup into a live React experience in the browser.
+
+Server Components are closely related to these rendering strategies, but they are not exactly the same thing. Rendering strategy answers when and where HTML is produced. Server Components answer which React components run only on the server and which ones need client JavaScript.
+
+The `server-only` package helps protect that boundary. If a module should never be imported into client code, importing `'server-only'` inside that module helps prevent accidental leakage of server logic into the browser bundle.
+
+## Syntax
+
+```tsx
+export default async function Page() {
+  const data = await fetch('https://example.com/api').then((response) =>
+    response.json(),
+  )
+
+  return <pre>{JSON.stringify(data, null, 2)}</pre>
+}
+```
+
+## Code examples
+
+### Example 1 — Basic async Server Component
+
+This is one of the biggest mindset shifts. The component itself can be `async`.
+
+```tsx
+export default async function LessonsPage() {
+  const response = await fetch('https://example.com/api/lessons')
+  const lessons = (await response.json()) as { id: number; title: string }[]
+
+  return (
+    <ul>
+      {lessons.map((lesson) => (
+        <li key={lesson.id}>{lesson.title}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+### Example 2 — Environment variable access on the server
+
+Secrets belong on the server, not in client code.
+
+```tsx
+export default async function BillingSummary() {
+  const apiKey = process.env.BILLING_API_SECRET
+
+  if (!apiKey) {
+    throw new Error('Missing billing API secret')
+  }
+
+  const response = await fetch('https://billing.example.com/summary', {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  })
+
+  const summary = (await response.json()) as { total: number }
+
+  return <p>Total due: ${summary.total}</p>
+}
+```
+
+### Example 3 — Importing a server-only database module
+
+A Server Component can call the database directly.
+
+```tsx
+import { db } from '@/server/db'
+
+export default async function UsersPage() {
+  const users = await db.user.findMany()
+
+  return (
+    <ul>
+      {users.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+### Example 4 — Passing server data to a Client Component
+
+The server fetches. The client interacts.
+
+```tsx
+import UserCard from './UserCard'
+
+export default async function UserPage() {
+  const response = await fetch('https://example.com/api/user/42')
+  const user = (await response.json()) as {
+    id: number
+    name: string
+    likes: number
+  }
+
+  return <UserCard user={user} />
+}
+```
+
+```tsx
+'use client'
+
+import { useState } from 'react'
+
+export default function UserCard({
+  user,
+}: {
+  user: { id: number; name: string; likes: number }
+}) {
+  const [likes, setLikes] = useState(user.likes)
+
+  return (
+    <article>
+      <h2>{user.name}</h2>
+      <button onClick={() => setLikes((value) => value + 1)}>
+        Likes: {likes}
+      </button>
+    </article>
+  )
+}
+```
+
+### Example 5 — `server-only` package
+
+This protects server modules from accidental client imports.
+
+```tsx
+import 'server-only'
+
+export async function getSecretUserData() {
+  const token = process.env.INTERNAL_API_TOKEN
+
+  const response = await fetch('https://example.com/internal/users', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  return response.json()
+}
+```
+
+If a Client Component tries to import this module, the tooling can warn early that the boundary is being broken.
+
+### Example 6 — Server fetch plus client interaction
+
+This is one of the most common real patterns.
+
+```tsx
+import FollowButton from './FollowButton'
+
+export default async function ProfilePage() {
+  const response = await fetch('https://example.com/api/profile')
+  const profile = (await response.json()) as {
+    id: string
+    name: string
+    isFollowing: boolean
+  }
+
+  return (
+    <section>
+      <h1>{profile.name}</h1>
+      <FollowButton
+        profileId={profile.id}
+        initialFollowing={profile.isFollowing}
+      />
+    </section>
+  )
+}
+```
+
+```tsx
+'use client'
+
+import { useState } from 'react'
+
+export default function FollowButton({
+  profileId,
+  initialFollowing,
+}: {
+  profileId: string
+  initialFollowing: boolean
+}) {
+  const [isFollowing, setIsFollowing] = useState(initialFollowing)
+
+  async function handleClick() {
+    await fetch(`/api/follow/${profileId}`, { method: 'POST' })
+    setIsFollowing(true)
+  }
+
+  return (
+    <button onClick={() => void handleClick()}>
+      {isFollowing ? 'Following' : 'Follow'}
+    </button>
+  )
+}
+```
+
+### Example 7 — Interleaving Server and Client Components
+
+You can nest them, but the responsibilities stay different.
+
+```tsx
+import Filters from './Filters'
+import SearchResults from './SearchResults'
+
+export default async function SearchPage({
+  searchParams,
+}: {
+  searchParams: { query?: string }
+}) {
+  const query = searchParams.query ?? ''
+  const response = await fetch(
+    `https://example.com/api/search?query=${encodeURIComponent(query)}`,
+  )
+  const results = (await response.json()) as { id: number; title: string }[]
+
+  return (
+    <>
+      <Filters initialQuery={query} />
+      <SearchResults results={results} />
+    </>
+  )
+}
+```
+
+`Filters` can be a Client Component because it handles typing and form interaction. `SearchResults` can stay on the server if it only renders data.
+
+### Example 8 — Complete dashboard example
+
+This example shows the overall architecture clearly.
+
+```tsx
+import ActivityChart from './ActivityChart'
+import RevenueCard from './RevenueCard'
+import SidebarFilters from './SidebarFilters'
+
+export default async function DashboardPage() {
+  const [revenueResponse, activityResponse] = await Promise.all([
+    fetch('https://example.com/api/revenue'),
+    fetch('https://example.com/api/activity'),
+  ])
+
+  const revenue = (await revenueResponse.json()) as { total: number }
+  const activity = (await activityResponse.json()) as number[]
+
+  return (
+    <div className="dashboard-layout">
+      <SidebarFilters />
+      <main>
+        <RevenueCard total={revenue.total} />
+        <ActivityChart points={activity} />
+      </main>
+    </div>
+  )
+}
+```
+
+In a real app, `DashboardPage` and `RevenueCard` may stay server-side, while `SidebarFilters` and `ActivityChart` can be client-side if they need interactivity.
+
+### Example 9 — What the browser receives in SSR vs CSR
+
+Seeing the HTML difference makes hydration easier to understand.
+
+```html
+<!-- SSR or SSG style response -->
+<html>
+  <body>
+    <h1>Account overview</h1>
+    <p>Current balance: $240</p>
+    <button>Refresh</button>
+  </body>
+</html>
+```
+
+```html
+<!-- CSR style response -->
+<html>
+  <body>
+    <div id="root"></div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
+```
+
+In the first case, meaningful HTML is already present before client JavaScript takes over. In the second, the browser mostly waits for JavaScript to build the visible UI.
+
+<LivePreview id="server-components" />
+
+## Common mistakes
+
+<Callout type="tip">
+Server Components can be async. You usually just add `async` to the component and `await` the data directly instead of moving that work into `useEffect`.
+</Callout>
+
+<Callout type="warning">
+You cannot use `useState`, `useEffect`, or any browser-only APIs in a Server Component.
+</Callout>
+
+<Callout type="warning">
+Never access secrets, database modules, or private server credentials inside a Client Component.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Treating Server Components and SSR as if they are identical.
+**Fix:** Separate the questions.
+**Why:** SSR is a rendering strategy. Server Components are a component model about where component logic runs.
+</Callout>
+
+## How this is used in real projects
+
+In real products, Server Components often become the default for data-heavy layout and read-only UI. A dashboard page can fetch data on the server, read secure environment variables, and compose the stable page structure without sending all of that code to the browser. Small interactive pieces such as filters, toggles, editors, dialogs, and charts can then be isolated as Client Components.
+
+This keeps bundles smaller and security boundaries cleaner. It also reduces the old pattern where every page fetched data in `useEffect`, rendered a loading spinner first, then updated after the browser finished the request. With Server Components, the server can prepare the data before the page is delivered.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is a React Server Component?
+**A:** A React Server Component is a component that runs only on the server. It can fetch data, access server resources, and return UI without shipping all of its logic to the browser. It is especially useful for data-heavy, non-interactive parts of a page.
+</Callout>
+
+<Callout type="interview">
+**Q:** What can you do in a Server Component that you cannot do in a Client Component?
+**A:** You can `await` data directly in the component body, access databases and files, use environment secrets, and import server-only modules. Those capabilities are safe because the code runs on the server instead of in the browser.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why do Server Components improve performance?
+**A:** They improve performance mainly by reducing the amount of JavaScript sent to the browser and by letting data fetching happen on the server directly. That often means faster initial rendering and less client-side work.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you pass data from a Server Component to a Client Component?
+**A:** The Server Component fetches or computes the data first, then passes that data as serializable props into the Client Component. The Client Component can then use that data for interactive UI.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the `server-only` package?
+**A:** It is a guard that marks a module as server-only so it is not accidentally imported into client code. This helps protect secrets and server-specific logic from leaking into the browser bundle.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between a Server Component and a Client Component?
+**A:** A Server Component runs on the server and is best for data access, secure logic, and non-interactive rendering. A Client Component runs in the browser and is required for local state, effects, event handlers, and browser APIs. Modern React apps usually compose both together instead of choosing only one.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="In App Router, what are components by default unless marked otherwise?"
+  options={["Client Components", "Server Components", "Hook Components", "DOM Components"]}
+  correct={1}
+  explanation="In App Router, components are Server Components by default unless the file starts with `'use client'`."
+/>
+
+<Quiz
+  question="Can you use `useState` inside a Server Component?"
+  options={["Yes", "Only in production", "No", "Only if hydration is disabled"]}
+  correct={2}
+  explanation="No. `useState`, `useEffect`, and other client hooks are not allowed in Server Components because they run on the server, not in the browser."
+/>
+
+<Quiz
+  question="What is hydration?"
+  options={[
+    "Deleting unused server HTML",
+    "Attaching React interactivity to server-rendered HTML",
+    "Turning TypeScript into JavaScript",
+    "Moving all components to the client"
+  ]}
+  correct={1}
+  explanation="Hydration is the process where React attaches event handlers and live client behavior to HTML that was already rendered on the server."
+/>
+
+<Quiz
+  question="Which rendering mode generates HTML at build time?"
+  options={["CSR", "SSR", "SSG", "Hydration"]}
+  correct={2}
+  explanation="SSG, static site generation, creates the HTML at build time and serves that prebuilt output later."
+/>
+
+<MarkDone slug="31-server-components" track="react" />

@@ -1,0 +1,237 @@
+---
+title: "Next.js concepts"
+description: "Learn the core Next.js ideas every advanced React developer should understand: framework vs library, App Router, server-first rendering, routing, caching, metadata, and when Next.js is the right tool."
+level: "advanced"
+minutes: 14
+stage: "Stage 6 — Advanced"
+slug: "32-nextjs-concepts"
+track: "react"
+---
+
+## Why this exists
+
+If you learn React seriously, you eventually run into the same question: “At what point is plain React not enough for the kind of app I want to build?” That is where Next.js enters the picture.
+
+React is a library. It helps you build UI. But once the app becomes production-focused, you still need answers for routing, rendering strategy, SEO, metadata, image optimization, server data fetching, caching, and deployment conventions. You can assemble those pieces yourself around React, but many teams prefer a framework that solves them in one connected system.
+
+This topic exists to help a React learner understand what changes when you move from “React app” thinking to “React framework” thinking. The full deep dive lives in the dedicated Next.js track. Here, the goal is to build the right mental bridge so the framework feels like a natural next step instead of an unrelated tool.
+
+## How it works
+
+The first big idea is the difference between a library and a framework.
+
+- React is a library: it focuses mainly on building UI
+- Next.js is a framework: it gives you a broader application structure and conventions around React
+
+That means Next.js adds things on top of React that plain React does not provide by default:
+
+- file-based routing
+- server rendering patterns
+- data fetching conventions
+- caching behavior
+- metadata APIs
+- image and font optimization
+- deployment-oriented defaults
+
+For a React developer, one of the biggest mental shifts is server-first thinking. In modern Next.js App Router, components are Server Components by default, and Client Components are used only where browser interactivity is actually needed. That is very different from a traditional client-only React SPA where most logic runs in the browser.
+
+Rendering strategy is another major difference. In plain React, client-side rendering is the default unless you add more infrastructure around it. In Next.js, you can work with:
+
+- static generation for pages that can be built ahead of time
+- server-side rendering for request-time data
+- incremental static regeneration for cached pages that update later
+- client components for interactive browser-only sections
+
+Routing is also built in. Instead of adding `react-router` and configuring routes manually, Next.js maps route segments from your `app/` or `pages/` folders into URLs automatically.
+
+Data fetching changes too. Instead of always reaching for `useEffect` in the browser, Next.js encourages fetching data on the server whenever possible. That simplifies many pages and keeps secrets, database access, and internal API logic off the client.
+
+Caching is one of the less obvious but more important differences. Next.js has built-in caching behavior around fetches and rendering, which means performance decisions are partly framework-level rather than fully ad hoc.
+
+Metadata matters because production apps need titles, descriptions, Open Graph tags, and SEO-friendly output. Next.js includes a structured way to define that metadata rather than leaving it to separate client-only solutions.
+
+Image and font optimization also matter because they affect real user performance. Next.js provides framework-level helpers and conventions for those concerns instead of leaving each team to reinvent them.
+
+The most useful summary is this: Next.js is opinionated React with batteries included. That can feel restrictive at first, but in production work it often removes a lot of repetitive architecture decisions.
+
+## Syntax
+
+```tsx
+export default function Page() {
+  return <h1>Hello from Next.js</h1>
+}
+```
+
+## Code examples
+
+### Example 1 — Plain React app vs Next.js app
+
+This comparison explains why many teams move to a framework.
+
+```txt
+Plain React app
+- choose router
+- choose data fetching strategy
+- choose SSR solution if needed
+- choose metadata strategy
+- choose image optimization approach
+```
+
+```txt
+Next.js app
+- routing is built in
+- server rendering patterns are built in
+- metadata API is built in
+- image optimization is built in
+- deployment model is built in
+```
+
+### Example 2 — Simplest possible Next.js page
+
+In App Router, a page is just a file that exports a component.
+
+```tsx
+export default function Page() {
+  return <h1>Welcome to Next.js</h1>
+}
+```
+
+### Example 3 — Routing works out of the box
+
+Folder structure becomes the route structure.
+
+```txt
+app/
+  dashboard/
+    page.tsx
+  settings/
+    page.tsx
+```
+
+This creates routes like:
+
+```txt
+/dashboard
+/settings
+```
+
+No separate router configuration is required for these basic routes.
+
+### Example 4 — Fetching directly in a server component
+
+This removes a lot of old client-side fetch boilerplate.
+
+```tsx
+export default async function DashboardPage() {
+  const response = await fetch('https://example.com/api/stats')
+  const stats = (await response.json()) as { users: number }
+
+  return <p>Total users: {stats.users}</p>
+}
+```
+
+### Example 5 — What the browser receives: server-rendered vs client-rendered
+
+This is one of the most important rendering differences to understand.
+
+```html
+<!-- Server-rendered page -->
+<html>
+  <body>
+    <h1>Product detail</h1>
+    <p>Price: $29</p>
+    <button>Add to cart</button>
+  </body>
+</html>
+```
+
+```html
+<!-- Client-rendered page shell -->
+<html>
+  <body>
+    <div id="root"></div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
+```
+
+With server rendering, meaningful content exists in the HTML before hydration. With pure client rendering, JavaScript usually has to build most of the visible UI after load.
+
+<LivePreview id="nextjs-concepts" />
+
+## Common mistakes
+
+<Callout type="note">
+React is a library, so you assemble more of the app stack yourself. Next.js is a framework, so more conventions are built in from the start.
+</Callout>
+
+<Callout type="tip">
+If you are building a production app with SEO requirements, server-rendered pages, and structured routing needs, Next.js is the standard choice in the React ecosystem.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does Next.js add on top of React?
+**A:** Next.js adds routing, server rendering patterns, data fetching conventions, caching behavior, metadata APIs, image and font optimization, and production-oriented deployment conventions on top of React.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Thinking Next.js replaces React.
+**Fix:** Treat Next.js as a framework built on React.
+**Why:** You are still writing React components, hooks, and JSX. Next.js adds application structure and server-first capabilities around them.
+</Callout>
+
+## How this is used in real projects
+
+In real product teams, Next.js is often chosen when the app needs both React developer experience and production framework features. Marketing pages need SEO and metadata. Dashboards need routing and server data fetching. SaaS products need predictable deployment patterns, secure server logic, and good performance defaults.
+
+A useful practical rule is this:
+
+- if you are learning UI fundamentals, plain React teaches the core mental model clearly
+- if you are building a production web application, Next.js is often the framework where those React skills get applied at scale
+
+That is why this topic appears here in the React track as a bridge. The full framework details are covered in the dedicated Next.js track, where concepts like rendering modes, routing, data fetching, middleware, and caching are explored in much more depth.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is Next.js and why would you use it instead of plain React?
+**A:** Next.js is a React framework that adds routing, server rendering patterns, data fetching conventions, metadata, caching, image optimization, and production-oriented app structure. You would use it instead of plain React when you want those capabilities built in rather than assembling them yourself from separate libraries and custom architecture.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between a library and a framework?
+**A:** A library gives you tools to solve one part of the problem, while a framework gives you broader structure, conventions, and built-in solutions across the application. React is mainly a UI library. Next.js is a framework around React.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are the main features Next.js provides out of the box?
+**A:** The main features include file-based routing, server rendering patterns, server components, structured data fetching, caching and revalidation behavior, metadata APIs, and asset optimization such as images and fonts.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are the SEO advantages of server-side rendering?
+**A:** Server-side rendering can send meaningful HTML to the browser immediately, which helps search engines and social crawlers read important content more easily. It can also improve initial content visibility for users before client JavaScript fully hydrates.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does Next.js add that plain React does not have by default?"
+  options={[
+    "Routing, server rendering patterns, data fetching conventions, image optimization, and more",
+    "Only CSS animations",
+    "Only JSX syntax",
+    "Nothing, they are the same"
+  ]}
+  correct={0}
+  explanation="Next.js adds framework-level features such as routing, server rendering, caching, metadata APIs, and optimization features that plain React does not provide by default."
+/>
+
+<Quiz
+  question="Is Next.js a library or a framework?"
+  options={["A library", "A framework", "A CSS preprocessor", "A database"]}
+  correct={1}
+  explanation="Next.js is a framework built on top of React. React itself is the library."
+/>
+
+<MarkDone slug="32-nextjs-concepts" track="react" />

@@ -1,0 +1,560 @@
+---
+title: "Performance optimization"
+description: "Learn why React re-renders, when optimization actually matters, and how tools like React.memo, useMemo, useCallback, virtualization, and code splitting fit together."
+level: "intermediate"
+minutes: 14
+stage: "Stage 5 — Real World"
+slug: "23-performance-optimization"
+track: "react"
+---
+
+## Why this exists
+
+React performance conversations often go wrong in two opposite directions. One group ignores performance until the app feels slow and hard to use. The other group starts adding `useMemo`, `useCallback`, and `React.memo` everywhere before there is any evidence of a real problem. Both approaches create pain.
+
+This topic exists to build the right performance mindset. Components re-render all the time in React, and that is usually normal. A re-render is not automatically a bug. The real question is whether the re-render is expensive enough to harm responsiveness. If it is not, optimizing it only adds complexity. If it is, you need to understand where the cost comes from and which tool actually addresses that bottleneck.
+
+Performance optimization in React is mostly about controlling unnecessary work: unnecessary re-renders, unnecessary expensive calculations, unnecessary remounts from unstable keys, unnecessary large DOM trees, and unnecessarily large bundles.
+
+## How it works
+
+React components re-render for a few main reasons:
+
+- their own state changes
+- their props change
+- their parent re-renders, causing children to render by default too
+
+That third point matters a lot. By default, when a parent renders, all of its children render too. This is the normal re-render chain. It does not always hurt performance, but it explains why lifting state too high can make large parts of the UI update more often than necessary.
+
+`React.memo` lets a component skip a re-render if its props are the same as the previous render. This helps only when the child is expensive enough that skipping the render is worth the comparison cost.
+
+`useMemo` caches a computed value. It is useful when a calculation is expensive and would otherwise rerun on every render.
+
+`useCallback` caches a function reference. This matters mainly when a child uses `React.memo` and a changing function prop would otherwise force that child to render again.
+
+These tools work together:
+
+- `useMemo` for expensive computed values
+- `useCallback` for stable function identity
+- `React.memo` for memoized child components
+
+But overusing them is a real problem. Memoization adds code complexity, dependency maintenance, and mental overhead. If the render or calculation is cheap, memoization can make the code worse without making the app meaningfully faster.
+
+Keys also matter for performance and correctness. Unstable keys like array indexes in reorderable lists can make React remount components unnecessarily, which loses local state and adds extra DOM work.
+
+Another performance issue is rendering too many items at once. Rendering 10,000 rows in the DOM is expensive even if the app logic is otherwise fine. Virtualization solves this by rendering only the visible portion of the list.
+
+Code splitting helps from a different angle. Instead of reducing re-renders, it reduces how much JavaScript loads up front. `React.lazy` and `Suspense` can defer loading rarely used components or routes until the user actually needs them.
+
+Profiling is the habit that ties all of this together. React DevTools Profiler helps you see which components render, how often, and how expensive those renders are. The right mindset is always: measure first, optimize bottlenecks, and stop when the real problem is solved.
+
+## Syntax
+
+```tsx
+const expensiveValue = useMemo(() => {
+  return heavyCalculation(items)
+}, [items])
+```
+
+## Code examples
+
+### Example 1 — The re-render chain
+
+When the parent re-renders, the child re-renders by default.
+
+```tsx
+import { useState } from 'react'
+
+function Child() {
+  console.log('Child rendered')
+  return <p>Child component</p>
+}
+
+export default function Parent() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <section>
+      <button onClick={() => setCount((value) => value + 1)}>{count}</button>
+      <Child />
+    </section>
+  )
+}
+```
+
+Even though `Child` has no props, it still re-renders when the parent does.
+
+### Example 2 — `React.memo`
+
+Memoization can skip child renders when props do not change.
+
+```tsx
+import { memo, useState } from 'react'
+
+const Child = memo(function Child() {
+  console.log('Memoized child rendered')
+  return <p>Memoized child</p>
+})
+
+export default function Parent() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <section>
+      <button onClick={() => setCount((value) => value + 1)}>{count}</button>
+      <Child />
+    </section>
+  )
+}
+```
+
+Now the child can skip re-rendering because it has no changing props.
+
+### Example 3 — `React.memo` failing because of unstable function props
+
+A new function reference on every render breaks memoization.
+
+```tsx
+import { memo, useState } from 'react'
+
+const Child = memo(function Child({
+  onSave,
+}: {
+  onSave: () => void
+}) {
+  console.log('Child rendered')
+  return <button onClick={onSave}>Save</button>
+})
+
+export default function Parent() {
+  const [count, setCount] = useState(0)
+
+  function handleSave() {
+    console.log('Saved')
+  }
+
+  return (
+    <section>
+      <button onClick={() => setCount((value) => value + 1)}>{count}</button>
+      <Child onSave={handleSave} />
+    </section>
+  )
+}
+```
+
+`handleSave` is recreated on every render, so the child still re-renders.
+
+### Example 4 — `useCallback` stabilizing the function prop
+
+This is where `useCallback` helps.
+
+```tsx
+import { memo, useCallback, useState } from 'react'
+
+const Child = memo(function Child({
+  onSave,
+}: {
+  onSave: () => void
+}) {
+  return <button onClick={onSave}>Save</button>
+})
+
+export default function Parent() {
+  const [count, setCount] = useState(0)
+
+  const handleSave = useCallback(() => {
+    console.log('Saved')
+  }, [])
+
+  return (
+    <section>
+      <button onClick={() => setCount((value) => value + 1)}>{count}</button>
+      <Child onSave={handleSave} />
+    </section>
+  )
+}
+```
+
+Now the callback identity is stable, so `React.memo` can help.
+
+### Example 5 — `useMemo` for expensive computation
+
+Cache expensive calculations instead of rerunning them on every render.
+
+```tsx
+import { useMemo, useState } from 'react'
+
+const items = Array.from({ length: 1000 }, (_, index) => `Item ${index + 1}`)
+
+export default function FilteredList() {
+  const [query, setQuery] = useState('')
+  const [theme, setTheme] = useState('light')
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item) =>
+      item.toLowerCase().includes(query.toLowerCase()),
+    )
+  }, [query])
+
+  return (
+    <section>
+      <input value={query} onChange={(event) => setQuery(event.target.value)} />
+      <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+        Toggle theme
+      </button>
+      <p>Matches: {filteredItems.length}</p>
+    </section>
+  )
+}
+```
+
+Changing the theme no longer recomputes the expensive filter.
+
+### Example 6 — The `React.memo` + `useCallback` pair
+
+This is the classic pattern when an expensive child receives a function prop.
+
+```tsx
+import { memo, useCallback, useState } from 'react'
+
+const ExpensiveTable = memo(function ExpensiveTable({
+  onRefresh,
+}: {
+  onRefresh: () => void
+}) {
+  return <button onClick={onRefresh}>Refresh table</button>
+})
+
+function Dashboard() {
+  const [count, setCount] = useState(0)
+
+  const handleRefresh = useCallback(() => {
+    console.log('Refreshing data')
+  }, [])
+
+  return (
+    <section>
+      <button onClick={() => setCount((value) => value + 1)}>{count}</button>
+      <ExpensiveTable onRefresh={handleRefresh} />
+    </section>
+  )
+}
+```
+
+### Example 7 — When `useMemo` is not needed
+
+Cheap calculations do not need memoization.
+
+```tsx
+function Greeting({ firstName, lastName }: { firstName: string; lastName: string }) {
+  const fullName = `${firstName} ${lastName}`
+
+  return <p>Hello, {fullName}</p>
+}
+```
+
+This string concatenation is cheap. Adding `useMemo` here would be unnecessary complexity.
+
+### Example 8 — Unstable keys causing remount
+
+Bad keys break identity.
+
+```tsx
+function WrongList({ items }: { items: { id: number; name: string }[] }) {
+  return (
+    <ul>
+      {items.map((item, index) => (
+        <li key={index}>{item.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+```tsx
+function RightList({ items }: { items: { id: number; name: string }[] }) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={item.id}>{item.name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Stable keys help React preserve the right component identity.
+
+### Example 9 — State too high
+
+Putting state too high in the tree can force too much UI to update.
+
+```tsx
+import { useState } from 'react'
+
+function App() {
+  const [draft, setDraft] = useState('')
+
+  return (
+    <section>
+      <Sidebar />
+      <Header />
+      <SearchBox value={draft} onChange={setDraft} />
+      <LargeDashboard />
+    </section>
+  )
+}
+```
+
+If only the search box needs the draft temporarily, keeping it at the app root may cause large unrelated parts of the UI to re-render.
+
+### Example 10 — Code splitting with `React.lazy`
+
+Load code only when the user reaches it.
+
+```tsx
+import { lazy, Suspense } from 'react'
+
+const ReportsPage = lazy(() => import('./ReportsPage'))
+
+function App() {
+  return (
+    <Suspense fallback={<p>Loading reports...</p>}>
+      <ReportsPage />
+    </Suspense>
+  )
+}
+```
+
+### Example 11 — Dynamic import on demand
+
+Sometimes a component should load only after a user action.
+
+```tsx
+import { lazy, Suspense, useState } from 'react'
+
+const Chart = lazy(() => import('./Chart'))
+
+function AnalyticsSection() {
+  const [showChart, setShowChart] = useState(false)
+
+  return (
+    <section>
+      <button onClick={() => setShowChart(true)}>Load chart</button>
+      {showChart ? (
+        <Suspense fallback={<p>Loading chart...</p>}>
+          <Chart />
+        </Suspense>
+      ) : null}
+    </section>
+  )
+}
+```
+
+### Example 12 — Virtualization
+
+Very large lists should not render every row at once.
+
+```tsx
+import { FixedSizeList as List } from 'react-window'
+
+const items = Array.from({ length: 10_000 }, (_, index) => `Row ${index + 1}`)
+
+function VirtualizedList() {
+  return (
+    <List height={400} itemCount={items.length} itemSize={35} width={300}>
+      {({ index, style }) => <div style={style}>{items[index]}</div>}
+    </List>
+  )
+}
+```
+
+Virtualization renders only the visible rows plus a small buffer.
+
+### Example 13 — React DevTools Profiler
+
+Profiling tells you where the real cost is.
+
+```txt
+Profile -> record interaction -> inspect which components rendered
+Look for:
+- components rendering very often
+- components taking a long time to render
+- unexpected re-render chains
+```
+
+A flame graph shows where time is being spent during a commit.
+
+### Example 14 — Complete optimized dashboard
+
+This example combines several practical strategies.
+
+```tsx
+import { lazy, memo, Suspense, useCallback, useMemo, useState } from 'react'
+
+const ActivityFeed = lazy(() => import('./ActivityFeed'))
+
+const StatsCard = memo(function StatsCard({
+  title,
+  value,
+}: {
+  title: string
+  value: number
+}) {
+  return (
+    <div>
+      <h3>{title}</h3>
+      <p>{value}</p>
+    </div>
+  )
+})
+
+const users = Array.from({ length: 1000 }, (_, index) => ({
+  id: index + 1,
+  name: `User ${index + 1}`,
+}))
+
+function Dashboard() {
+  const [query, setQuery] = useState('')
+  const [count, setCount] = useState(0)
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((user) =>
+      user.name.toLowerCase().includes(query.toLowerCase()),
+    )
+  }, [query])
+
+  const handleRefresh = useCallback(() => {
+    console.log('Refresh expensive section')
+  }, [])
+
+  return (
+    <section>
+      <input value={query} onChange={(event) => setQuery(event.target.value)} />
+      <button onClick={() => setCount((value) => value + 1)}>{count}</button>
+      <StatsCard title="Results" value={filteredUsers.length} />
+      <button onClick={handleRefresh}>Refresh</button>
+      <Suspense fallback={<p>Loading feed...</p>}>
+        <ActivityFeed />
+      </Suspense>
+    </section>
+  )
+}
+```
+
+<LivePreview id="performance-react" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Treating every re-render as a performance problem.
+**Fix:** Measure first and optimize only when rendering is actually expensive.
+**Why:** Many normal re-renders are cheap, and premature optimization only makes code harder to maintain.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Adding `useMemo` and `useCallback` everywhere by default.
+**Fix:** Use them only when they solve a measured bottleneck or support a memoized child relationship.
+**Why:** Over-optimization adds dependency complexity and mental overhead without meaningful benefit in many cases.
+</Callout>
+
+<Callout type="tip">
+Profile before optimizing. Most re-renders are not actually slow.
+</Callout>
+
+<Callout type="tip">
+React.memo only helps if the memoized child is expensive to render.
+</Callout>
+
+<Callout type="tip">
+`useMemo` for computation, `useCallback` for function identity, `React.memo` for component.
+</Callout>
+
+<Callout type="warning">
+Overusing `useMemo` and `useCallback` adds complexity without benefit in most cases.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `useMemo` and `useCallback`?
+**A:** `useMemo` caches the result of a computation, while `useCallback` caches the function reference itself. They solve related but different problems and are often used together with `React.memo`.
+</Callout>
+
+## How this is used in real projects
+
+Performance work in real React apps usually starts with symptoms: typing feels laggy, a dashboard takes too long to update, a list scrolls badly, or route changes download too much code. The solution is rarely “memoize everything.” It is usually a mix of measuring, identifying the bottleneck, and applying the right tool for that specific problem.
+
+Memoization helps when expensive children or computations are rerunning unnecessarily. Virtualization helps when DOM size itself is the bottleneck. Code splitting helps when bundle size is too large. Deferred and transition-based APIs help when the UI should stay responsive while slower updates happen in the background. Each tool addresses a different kind of cost.
+
+That is why the mindset matters more than any single hook. Strong performance work is about choosing targeted fixes instead of adding optimization noise everywhere.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** Why do components re-render in React?
+**A:** Components re-render when their state changes, when their props change, or when their parent re-renders and they render as part of that tree update. Re-rendering is normal React behavior and only becomes a performance concern when the work is expensive enough to hurt responsiveness.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is React.memo and when should you use it?
+**A:** `React.memo` memoizes a component so React can skip re-rendering it when its props have not changed. It is most useful for components that are expensive to render and receive stable props. It is not automatically helpful for every child component.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `useMemo` and `useCallback`?
+**A:** `useMemo` caches a computed value. `useCallback` caches a function reference. `useMemo` is for expensive calculations, while `useCallback` is mainly for stable function identity, often to support `React.memo`.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is virtualization and when do you need it?
+**A:** Virtualization means rendering only the visible portion of a long list instead of rendering every row into the DOM at once. You need it when large lists or tables become slow because of DOM size and rendering cost.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is code splitting?
+**A:** Code splitting is loading parts of the JavaScript bundle only when they are needed, instead of shipping everything up front. In React, this is often done with `React.lazy`, `Suspense`, and dynamic imports.
+</Callout>
+
+<Callout type="interview">
+**Q:** When should you NOT optimize?
+**A:** You should not optimize before you have evidence of a real bottleneck. If the render work is cheap and the UI feels responsive, adding memoization can make the code harder to understand without improving user experience.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does React.memo do?"
+  options={[
+    "Prevents re-render if props did not change",
+    "Caches a computed value",
+    "Caches a function reference",
+    "Loads a component lazily"
+  ]}
+  correct={0}
+  explanation="`React.memo` memoizes a component so React can skip rendering it again when its props are unchanged."
+/>
+
+<Quiz
+  question="What is the difference between useMemo and useCallback?"
+  options={[
+    "useMemo caches a value, useCallback caches a function",
+    "They are identical",
+    "useMemo only works with arrays",
+    "useCallback only works with event handlers"
+  ]}
+  correct={0}
+  explanation="`useMemo` caches a computed result. `useCallback` caches a function reference."
+/>
+
+<Quiz
+  question="When should you add memoization?"
+  options={[
+    "By default in every component",
+    "Only after measuring a real bottleneck",
+    "Only when using TypeScript",
+    "Whenever a parent re-renders"
+  ]}
+  correct={1}
+  explanation="Memoization should be added after profiling or otherwise verifying that unnecessary expensive work is a real problem."
+/>
+
+<MarkDone slug="23-performance-optimization" track="react" />

@@ -1,0 +1,366 @@
+---
+title: "React Hooks Overview"
+description: "Learn what hooks are, why they exist, the rules of hooks, and how to think about built-in hooks from core hooks to newer modern React hooks."
+level: "beginner"
+minutes: 10
+stage: "Stage 2 — Core React"
+slug: "09-hooks-overview"
+track: "react"
+---
+
+## Why this exists
+
+Before hooks, React developers often used class components whenever they needed state, lifecycle behavior, refs, or context. Class components worked, but they were verbose and introduced concepts that many developers found awkward, especially `this`, method binding, and logic spread across different lifecycle methods. Hooks were introduced to make React features available inside normal function components. That made component code easier to write, easier to reuse, and easier to organize.
+
+Hooks matter because modern React is built around them. When developers talk about local state, side effects, memoization, refs, context, or reducers in function components, they are usually talking about hooks. If you understand hooks well, the rest of modern React becomes much easier to understand.
+
+## How it works
+
+Hooks are special React functions that let functional components use React features such as state, effects, refs, and context. A hook usually starts with the word `use`, like `useState` or `useEffect`. When React renders a component, it keeps track of the order in which hooks are called. This is why hooks have rules: React depends on consistent hook call order to connect the right state and behavior to the right component instance.
+
+There are two core rules of hooks. First, only call hooks at the top level of a React component or a custom hook. Do not call them inside `if` statements, loops, or nested functions. Second, only call hooks from React functions, meaning React components or custom hooks, not from ordinary utility functions. If you break these rules, React can lose track of which hook call belongs to which piece of state or logic.
+
+The reason these rules exist is not style preference. It is how React works internally. React expects the first hook call in a component to always be the same hook, the second hook call to always be the same hook, and so on. If a hook call disappears because an `if` branch did not run this time, every later hook shifts position and React gets confused.
+
+Hooks also made it much easier to reuse stateful logic. Before hooks, sharing logic often meant mixins, higher-order components, or render props, all of which added complexity. With hooks, logic can often be extracted into a reusable custom hook like `useWindowSize`, `useDebouncedValue`, or `useUserProfile`. That means behavior can be shared without wrapping the UI in extra component layers.
+
+Modern React includes many built-in hooks. Some are used all the time, like `useState`, `useEffect`, and `useRef`. Others are more specialized, such as `useLayoutEffect`, `useSyncExternalStore`, or `useImperativeHandle`. Newer React versions also added hooks and hook-like APIs for concurrent UI patterns and form/server workflows, such as `useTransition`, `useDeferredValue`, `useActionState`, and `useOptimistic`. You do not need to memorize every detail right now, but you should understand what each hook is for at a high level and when you might reach for it.
+
+## Syntax
+
+```tsx
+import { useState } from 'react'
+
+function Counter() {
+  const [count, setCount] = useState(0)
+
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+## Code examples
+
+### Example 1 — Hooks vs class components
+
+Hooks were introduced partly because stateful class components were more verbose.
+
+```tsx
+// Class component
+import React from 'react'
+
+class Counter extends React.Component<
+  Record<string, never>,
+  { count: number }
+> {
+  constructor(props: Record<string, never>) {
+    super(props)
+    this.state = {
+      count: 0,
+    }
+  }
+
+  render() {
+    return (
+      <button
+        onClick={() =>
+          this.setState((currentState) => ({
+            count: currentState.count + 1,
+          }))
+        }
+      >
+        {this.state.count}
+      </button>
+    )
+  }
+}
+```
+
+```tsx
+// Function component with hook
+import { useState } from 'react'
+
+export default function Counter() {
+  const [count, setCount] = useState(0)
+
+  return (
+    <button onClick={() => setCount((value) => value + 1)}>
+      {count}
+    </button>
+  )
+}
+```
+
+The hook version is shorter and easier to read. It gives function components access to state without needing a class.
+
+### Example 2 — Correct hook usage at the top level
+
+Hooks should be called directly at the top level of the component.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export default function ProfileCard() {
+  const [name, setName] = useState('Mahesh')
+
+  useEffect(() => {
+    console.log('Profile mounted or updated')
+  }, [])
+
+  return (
+    <section>
+      <p>{name}</p>
+      <button onClick={() => setName('React learner')}>Rename</button>
+    </section>
+  )
+}
+```
+
+The hooks are called in a stable, predictable order every time the component renders.
+
+### Example 3 — Wrong hook usage inside an `if`
+
+Hooks must not be called conditionally.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export default function BadExample({ showEffect }: { showEffect: boolean }) {
+  const [count, setCount] = useState(0)
+
+  if (showEffect) {
+    useEffect(() => {
+      console.log('This breaks the rules of hooks')
+    }, [])
+  }
+
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+This breaks the rules because the hook call order changes depending on `showEffect`.
+
+### Example 4 — Wrong hook usage inside a loop
+
+Hooks must not be called inside loops either.
+
+```tsx
+import { useState } from 'react'
+
+export default function BadLoopExample() {
+  const labels = ['A', 'B', 'C']
+
+  for (const label of labels) {
+    useState(label)
+  }
+
+  return <p>Bad example</p>
+}
+```
+
+The number and order of hook calls must stay consistent. Loops make that unreliable.
+
+### Example 5 — `eslint-plugin-react-hooks`
+
+The React hooks lint rules catch many mistakes automatically.
+
+```json
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  }
+}
+```
+
+The hooks lint rules help catch invalid hook placement and missing effect dependencies before those bugs reach production.
+
+### Example 6 — A component using multiple hooks together
+
+Real components often use several hooks at the same time.
+
+```tsx
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+export default function SearchWidget() {
+  const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const trimmedQuery = useMemo(() => query.trim(), [query])
+
+  return (
+    <section>
+      <input
+        ref={inputRef}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search"
+      />
+      <p>Searching for: {trimmedQuery || 'nothing yet'}</p>
+    </section>
+  )
+}
+```
+
+This shows that hooks are not separate features. They often work together inside one component.
+
+## Built-in hooks overview
+
+### `useState`
+
+Use `useState` for local component state such as toggles, input values, counters, selected tabs, and other data the component owns.
+
+### `useEffect`
+
+Use `useEffect` for side effects that need to run after render, such as data fetching, timers, subscriptions, localStorage sync, or event listeners.
+
+### `useContext`
+
+Use `useContext` to read a value from React context without manually passing it through many layers of props.
+
+### `useRef`
+
+Use `useRef` for DOM access or for storing a mutable value that should persist between renders without causing a re-render.
+
+### `useMemo`
+
+Use `useMemo` to memoize an expensive calculation so React can reuse the result when the dependencies have not changed.
+
+### `useCallback`
+
+Use `useCallback` to memoize a function reference when passing callbacks to memoized children or when a stable function identity matters.
+
+### `useReducer`
+
+Use `useReducer` when state logic is more complex and easier to describe as actions changing state through a reducer.
+
+### `useLayoutEffect`
+
+Use `useLayoutEffect` rarely, when you need to run code after DOM changes but before the browser paints, such as measurement-sensitive layout work.
+
+### `useId`
+
+Use `useId` to generate stable IDs for accessibility relationships such as label/input pairs.
+
+### `useTransition`
+
+Use `useTransition` when you want to mark some updates as non-urgent so the UI can stay responsive during heavier rendering work.
+
+### `useDeferredValue`
+
+Use `useDeferredValue` when you want a slower-updating version of a value, such as deferring a search query used in expensive rendering.
+
+### `useImperativeHandle`
+
+Use `useImperativeHandle` with forwarded refs when a child should expose a controlled custom API to the parent instead of the raw DOM node.
+
+### `useDebugValue`
+
+Use `useDebugValue` inside custom hooks to give DevTools more meaningful labels while debugging.
+
+### `useSyncExternalStore`
+
+Use `useSyncExternalStore` when a component needs to subscribe to an external store outside React and stay consistent with concurrent rendering.
+
+### Newer modern React hook-like APIs
+
+Recent React versions also introduced newer patterns you should at least recognize:
+
+- `useActionState`: useful for form or action flows where you want to track server/client action state in a structured way.
+- `useOptimistic`: useful when you want to show an optimistic UI update before the real server result finishes.
+- `use`: useful in newer React and framework-integrated environments for reading promises or context-like resources during render in supported setups.
+
+You will not use all of these every day, but it is worth knowing they exist in modern React.
+
+## When to use which hook
+
+- Use `useState` when a component owns simple local data.
+- Use `useEffect` when you need to synchronize with something outside React rendering.
+- Use `useRef` when you need DOM access or a mutable value that should not trigger re-renders.
+- Use `useContext` when many descendants need the same shared value.
+- Use `useReducer` when state transitions are complex and action-based.
+- Use `useMemo` and `useCallback` only when memoization solves a real performance or identity problem.
+- Use `useTransition` or `useDeferredValue` when you need better responsiveness around expensive UI updates.
+- Use `useSyncExternalStore` when React must stay in sync with an outside store.
+
+## Common mistakes
+
+<Callout type="warning">
+Never call hooks inside `if` statements, loops, or nested functions. Hook call order must stay consistent across renders.
+</Callout>
+
+<Callout type="mistake">
+Calling a hook from a regular JavaScript function instead of a React component or custom hook breaks the rules of hooks.
+</Callout>
+
+<Callout type="tip">
+Install `eslint-plugin-react-hooks` and keep it enabled. It catches hook placement mistakes and many dependency issues automatically.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are the rules of hooks and why do they exist?
+**A:** The two rules are: only call hooks at the top level, and only call hooks from React components or custom hooks. These rules exist because React tracks hooks by call order. If a hook call moves, disappears, or appears conditionally, React can no longer reliably match hook state to the correct call. The rules protect the internal consistency of React's rendering model.
+</Callout>
+
+## How this is used in real projects
+
+In real applications, hooks are the main way developers organize component behavior. A screen might use `useState` for filters, `useEffect` for data fetching, `useMemo` for derived sorting, `useRef` for focus management, and `useTransition` to keep search interactions responsive. Hooks are not just small utilities. They are the standard interface to modern React behavior.
+
+Hooks also changed how teams share logic. Instead of wrapping components in large chains of higher-order components or render-prop wrappers, developers can move shared logic into custom hooks like `useCurrentUser`, `useWindowSize`, `useDebouncedSearch`, or `useKeyboardShortcut`. That keeps UI trees cleaner and makes behavior easier to reuse.
+
+Newer React versions also keep expanding how hooks fit into app architecture. As React evolved, hooks moved beyond only local component state into concurrency, external store syncing, and framework-assisted async workflows. That is why understanding the core idea of hooks now gives you a foundation for the newer APIs too.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What are React hooks?
+**A:** React hooks are special functions that let function components use React features such as state, effects, refs, and context. They replaced many class-component patterns with a cleaner function-based model. Hooks make logic easier to organize and easier to reuse through custom hooks. Modern React is largely built around them.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are the two rules of hooks?
+**A:** The first rule is to call hooks only at the top level, not inside conditions, loops, or nested functions. The second rule is to call hooks only from React components or custom hooks, not from ordinary JavaScript functions. These rules keep hook call order stable between renders. React depends on that stability to match the right state and logic to the right hook call.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why must hooks be called at the top level?
+**A:** Hooks must be called at the top level so that React sees them in the same order every render. If a hook were skipped inside an `if` statement or repeated in a loop, later hook calls could shift position. That would make React attach the wrong state or effect to the wrong hook. The rule exists because React tracks hooks by call order, not by hook name.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why were hooks introduced and what problem did they solve?
+**A:** Hooks were introduced to let function components use stateful React features without relying on class components. Class components often became verbose and harder to reason about because logic was split across lifecycle methods and tied to `this`. Hooks made stateful logic easier to read, easier to compose, and easier to reuse through custom hooks. They simplified modern React development significantly.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Can you call a hook inside an `if` statement?"
+  options={[
+    "Yes, if the condition is simple",
+    "Yes, but only in development",
+    "No, because it breaks hook call order",
+    "No, unless the hook is useState"
+  ]}
+  correct={2}
+  explanation="Hooks must be called in a stable order every render. Calling one conditionally breaks that order and confuses React's internal hook tracking."
+/>
+
+<Quiz
+  question="Where can you call hooks?"
+  options={[
+    "Anywhere in JavaScript",
+    "Only inside React components or custom hooks",
+    "Only inside event handlers",
+    "Only inside loops"
+  ]}
+  correct={1}
+  explanation="Hooks belong only in React components and custom hooks. Calling them from ordinary utility functions breaks the rules of hooks."
+/>
+
+<MarkDone slug="09-hooks-overview" track="react" />
+<LivePreview id="hooks-overview" />

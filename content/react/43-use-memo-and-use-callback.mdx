@@ -1,0 +1,448 @@
+---
+title: "useMemo and useCallback"
+description: "Learn what useMemo and useCallback actually do, when they help, when they hurt, and how they work with React.memo in real React apps."
+level: "intermediate"
+minutes: 12
+stage: "Stage 7 — Modern React"
+slug: "43-use-memo-and-use-callback"
+track: "react"
+---
+
+## Why this exists
+
+As React apps grow, developers often notice a confusing pattern: the app still works, but parts of it feel heavier than expected. A search box lags while typing. A large child component re-renders even though its visible data did not change. A parent updates one small piece of state, and suddenly a whole branch of the UI runs again.
+
+That is where `useMemo` and `useCallback` enter the conversation. These hooks do not make React "fast" by default. They solve a narrower problem: avoiding unnecessary repeated work when that work is actually expensive enough to matter. The danger is that many teams start using them everywhere, which makes code harder to read without improving performance.
+
+This topic exists to build the right mental model. `useMemo` caches a calculated value. `useCallback` caches a function reference. Both are optimization tools, not coding style rules. The goal is to know when they help, when they do nothing useful, and how they fit with `React.memo`.
+
+## How it works
+
+React re-renders a component whenever its state changes, its props change, or one of its parents re-renders. During that render, all the code inside the component runs again. Most of the time that is completely fine. Simple calculations like string concatenation, a small `map`, or a cheap boolean check are not worth optimizing.
+
+Problems appear when one of two things is true:
+
+- a calculation is expensive and keeps rerunning even when its inputs have not changed
+- a child component is memoized, but it still re-renders because one of its props is a brand new function on every render
+
+`useMemo` solves the first problem. It lets React reuse the previous result of a calculation until one of the listed dependencies changes. That means React can skip recalculating that value on unrelated renders.
+
+`useCallback` solves the second problem. Functions are values in JavaScript. Every time a component renders, a new function is created unless you intentionally preserve it. If a memoized child receives a new function prop every render, `React.memo` sees that prop as changed and the child renders again. `useCallback` keeps the same function reference until its dependencies change.
+
+The big idea is this:
+
+- `useMemo` memoizes a **value**
+- `useCallback` memoizes a **function**
+- `React.memo` memoizes a **component render**
+
+These tools are often used together. A parent may use `useMemo` to keep filtered data stable, `useCallback` to keep handler props stable, and `React.memo` to let a heavy child skip re-rendering when those props have not changed.
+
+But memoization has a cost too. React still has to store the memoized result and compare dependencies. You also have to maintain the dependency array correctly. If the work is cheap, memoization makes the code more complex for no real win. So the right question is never "Can I use useMemo here?" The better question is "Is there enough repeated work here to justify the extra complexity?"
+
+## Syntax
+
+```tsx
+const cachedValue = useMemo(() => {
+  return expensiveCalculation(items)
+}, [items])
+
+const stableHandler = useCallback(() => {
+  doSomething()
+}, [doSomething])
+```
+
+## Code examples
+
+### Example 1 — `useMemo` caching an expensive filtered list
+
+Imagine a dashboard with a large list and some unrelated UI state like a theme toggle. Without memoization, the filter work runs again every time the parent renders.
+
+```tsx
+import { useMemo, useState } from 'react'
+
+const products = Array.from({ length: 1000 }, (_, index) => ({
+  id: index + 1,
+  name: `Product ${index + 1}`,
+}))
+
+export default function ProductSearch() {
+  const [query, setQuery] = useState('')
+  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+
+  const filteredProducts = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+
+    return products.filter((product) =>
+      product.name.toLowerCase().includes(normalized),
+    )
+  }, [query])
+
+  return (
+    <section>
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search products"
+      />
+
+      <button
+        type="button"
+        onClick={() =>
+          setTheme((currentTheme) =>
+            currentTheme === 'light' ? 'dark' : 'light',
+          )
+        }
+      >
+        Theme: {theme}
+      </button>
+
+      <p>Matches: {filteredProducts.length}</p>
+    </section>
+  )
+}
+```
+
+Now the expensive filter only reruns when `query` changes. Toggling the theme still re-renders the component, but it does not recompute the filtered list.
+
+### Example 2 — `useCallback` keeping a function prop stable
+
+If a parent passes a callback into a memoized child, the child can still re-render unless the callback reference stays stable.
+
+```tsx
+import { memo, useCallback, useState } from 'react'
+
+interface SaveButtonProps {
+  onSave: () => void
+}
+
+const SaveButton = memo(function SaveButton({
+  onSave,
+}: SaveButtonProps) {
+  return (
+    <button type="button" onClick={onSave}>
+      Save draft
+    </button>
+  )
+})
+
+export default function EditorToolbar() {
+  const [count, setCount] = useState(0)
+
+  const handleSave = useCallback(() => {
+    console.log('Saved')
+  }, [])
+
+  return (
+    <section>
+      <button type="button" onClick={() => setCount((value) => value + 1)}>
+        Parent renders: {count}
+      </button>
+      <SaveButton onSave={handleSave} />
+    </section>
+  )
+}
+```
+
+`useCallback` is useful here because the child is memoized and the callback identity actually matters. Without `useCallback`, `handleSave` would be a new function every render.
+
+### Example 3 — A bad `useMemo` that should be removed
+
+Not every calculation deserves memoization. Cheap work should usually stay simple.
+
+```tsx
+import { useMemo } from 'react'
+
+interface GreetingProps {
+  firstName: string
+  lastName: string
+}
+
+export default function Greeting({
+  firstName,
+  lastName,
+}: GreetingProps) {
+  const fullName = useMemo(() => {
+    return `${firstName} ${lastName}`
+  }, [firstName, lastName])
+
+  return <p>Hello, {fullName}</p>
+}
+```
+
+This is over-optimized. String concatenation is cheap, so the memoization adds complexity without a meaningful gain. The simpler version is better:
+
+```tsx
+interface GreetingProps {
+  firstName: string
+  lastName: string
+}
+
+export default function Greeting({
+  firstName,
+  lastName,
+}: GreetingProps) {
+  const fullName = `${firstName} ${lastName}`
+
+  return <p>Hello, {fullName}</p>
+}
+```
+
+The lesson is important: memoization is not a badge of performance maturity. Good judgment is.
+
+### Example 4 — `useCallback` in a list item action flow
+
+In real apps, memoized list rows often receive action handlers. Stable callbacks help when the rows are intentionally memoized because the list is large or expensive.
+
+```tsx
+import { memo, useCallback, useState } from 'react'
+
+interface Todo {
+  id: number
+  text: string
+  done: boolean
+}
+
+interface TodoRowProps {
+  todo: Todo
+  onToggle: (id: number) => void
+}
+
+const TodoRow = memo(function TodoRow({
+  todo,
+  onToggle,
+}: TodoRowProps) {
+  return (
+    <li>
+      <label>
+        <input
+          type="checkbox"
+          checked={todo.done}
+          onChange={() => onToggle(todo.id)}
+        />
+        {todo.text}
+      </label>
+    </li>
+  )
+})
+
+export default function TodoList() {
+  const [todos, setTodos] = useState<Todo[]>([
+    { id: 1, text: 'Review policy quote', done: false },
+    { id: 2, text: 'Email customer', done: true },
+  ])
+
+  const handleToggle = useCallback((id: number) => {
+    setTodos((currentTodos) =>
+      currentTodos.map((todo) =>
+        todo.id === id ? { ...todo, done: !todo.done } : todo,
+      ),
+    )
+  }, [])
+
+  return (
+    <ul>
+      {todos.map((todo) => (
+        <TodoRow key={todo.id} todo={todo} onToggle={handleToggle} />
+      ))}
+    </ul>
+  )
+}
+```
+
+This is a realistic place for `useCallback`. The callback is shared across rows, the child rows are memoized, and the app may render many of them.
+
+### Example 5 — `React.memo`, `useMemo`, and `useCallback` together
+
+This is the most complete example because it shows how these tools usually work as a set.
+
+```tsx
+import { memo, useCallback, useMemo, useState } from 'react'
+
+interface Report {
+  id: number
+  name: string
+  status: 'open' | 'closed'
+}
+
+const reports: Report[] = [
+  { id: 1, name: 'Claims summary', status: 'open' },
+  { id: 2, name: 'Fraud alerts', status: 'closed' },
+  { id: 3, name: 'Underwriting backlog', status: 'open' },
+]
+
+interface ReportTableProps {
+  reports: Report[]
+  onSelect: (id: number) => void
+}
+
+const ReportTable = memo(function ReportTable({
+  reports,
+  onSelect,
+}: ReportTableProps) {
+  return (
+    <ul>
+      {reports.map((report) => (
+        <li key={report.id}>
+          <button type="button" onClick={() => onSelect(report.id)}>
+            {report.name} — {report.status}
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+})
+
+export default function ReportingScreen() {
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>(
+    'all',
+  )
+  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+
+  const visibleReports = useMemo(() => {
+    if (statusFilter === 'all') {
+      return reports
+    }
+
+    return reports.filter((report) => report.status === statusFilter)
+  }, [statusFilter])
+
+  const handleSelect = useCallback((id: number) => {
+    console.log(`Selected report ${id}`)
+  }, [])
+
+  return (
+    <section>
+      <button type="button" onClick={() => setStatusFilter('all')}>
+        All
+      </button>
+      <button type="button" onClick={() => setStatusFilter('open')}>
+        Open
+      </button>
+      <button type="button" onClick={() => setStatusFilter('closed')}>
+        Closed
+      </button>
+
+      <button
+        type="button"
+        onClick={() =>
+          setTheme((currentTheme) =>
+            currentTheme === 'light' ? 'dark' : 'light',
+          )
+        }
+      >
+        Theme: {theme}
+      </button>
+
+      <ReportTable reports={visibleReports} onSelect={handleSelect} />
+    </section>
+  )
+}
+```
+
+This pattern works well because each memoization has a reason:
+
+- `useMemo` keeps the filtered reports stable unless the filter changes
+- `useCallback` keeps the select handler stable
+- `React.memo` lets the table skip unnecessary re-renders when its props are unchanged
+
+<LivePreview id="memo-callback" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Wrapping every calculated value in `useMemo`.
+**Fix:** Only memoize calculations that are expensive enough to matter or whose stable identity is needed by a memoized child.
+**Why:** Cheap calculations are usually faster and clearer without memoization.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using `useCallback` when the callback is not passed to a memoized child and not used as a dependency problem.
+**Fix:** Leave the function inline unless its identity actually matters.
+**Why:** `useCallback` is not free. It adds dependency management and extra mental overhead.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting dependencies in `useMemo` or `useCallback`.
+**Fix:** Include every reactive value the callback or calculation uses.
+**Why:** Missing dependencies create stale values and stale closures, which leads to confusing bugs.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Expecting `useMemo` or `useCallback` to fix slow rendering caused by huge DOM trees or poor state placement.
+**Fix:** Measure the real bottleneck first.
+**Why:** Memoization helps with repeated computation and prop identity, but it does not solve every performance problem.
+</Callout>
+
+<Callout type="tip">
+Start simple. Add memoization only after you can explain exactly what repeated work you are trying to avoid.
+</Callout>
+
+## How this is used in real projects
+
+In real product codebases, `useMemo` often appears around derived data that would otherwise be recomputed on every render: filtered tables, grouped dashboard cards, sorted lists, search results, chart data transforms, and permission maps. For example, an insurance operations dashboard may receive hundreds of policy records and derive filtered subsets for "expiring soon", "pending review", and "documents missing". If a theme switch, modal open state, or active tab changes, that expensive derivation does not need to rerun every time.
+
+`useCallback` shows up most often when teams intentionally memoize expensive children. A large table row, chart widget, or editor toolbar can receive stable callbacks like `onRefresh`, `onSelectRow`, or `onSaveDraft` so that unrelated parent updates do not force that heavy child to re-render. It also appears in custom hooks when you want a returned API to stay stable for consumers.
+
+In strong production code, these hooks are usually part of a broader performance strategy, not isolated magic. Teams also measure real bottlenecks, keep state as local as possible, avoid unnecessary remounting with unstable keys, split large components, and use tools like React DevTools Profiler to confirm that an optimization actually helped.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between `useMemo` and `useCallback`?
+**A:** `useMemo` memoizes the result of a calculation, while `useCallback` memoizes the function reference itself. You use `useMemo` when recalculating a value is expensive or when a stable value identity matters. You use `useCallback` when a stable function identity matters, usually because you are passing that function to a memoized child or using it inside another hook dependency relationship. They solve related but different problems.
+</Callout>
+
+<Callout type="interview">
+**Q:** When should you use `useMemo`?
+**A:** You should use `useMemo` when you have a calculation that is expensive enough to matter on repeated renders, or when you need a stable derived value to avoid extra downstream work. It is especially useful for filtered lists, sorted data, grouped results, and transformed objects that feed memoized children. You should not use it for every small calculation, because the hook adds complexity and does not automatically improve performance. Good use of `useMemo` is selective and based on actual repeated work.
+</Callout>
+
+<Callout type="interview">
+**Q:** When does `useCallback` actually help?
+**A:** `useCallback` helps when the identity of the function matters. The most common case is a memoized child component that receives a callback prop. Without `useCallback`, the child may still re-render because the parent creates a new function every render. If the callback is not being used in a place where identity matters, `useCallback` often adds noise without solving a real problem.
+</Callout>
+
+<Callout type="interview">
+**Q:** Can `useMemo` and `useCallback` hurt performance?
+**A:** Yes, they can if they are used everywhere without reason. Both hooks add bookkeeping, dependency management, and code complexity. If the original calculation or function recreation is cheap, the app may become harder to understand without any measurable speed benefit. That is why senior React work treats them as targeted tools rather than default habits.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does `useMemo` memoize?"
+  options={[
+    "A component render",
+    "A calculated value",
+    "A DOM node",
+    "A server response"
+  ]}
+  correct={1}
+  explanation="`useMemo` stores the result of a calculation and reuses it until one of its dependencies changes."
+/>
+
+<Quiz
+  question="When is `useCallback` most useful?"
+  options={[
+    "When a function is passed to a memoized child",
+    "Whenever any function exists inside a component",
+    "Only when fetching data",
+    "Only in forms"
+  ]}
+  correct={0}
+  explanation="`useCallback` is most useful when function identity matters, especially for memoized child components or hook dependency behavior."
+/>
+
+<Quiz
+  question="What is the best mindset for using memoization hooks?"
+  options={[
+    "Wrap everything to be safe",
+    "Use them only after identifying repeated work that matters",
+    "Always replace normal variables with memoized ones",
+    "Avoid them completely"
+  ]}
+  correct={1}
+  explanation="Memoization should be a targeted optimization. The right approach is to identify repeated work that actually affects responsiveness, then optimize that bottleneck."
+/>
+
+<MarkDone slug="43-use-memo-and-use-callback" track="react" />

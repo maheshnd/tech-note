@@ -1,0 +1,549 @@
+---
+title: "TypeScript with React"
+description: "Learn how to type props, state, events, refs, context, reducers, generics, utility types, Zod schemas, and API responses in real React code."
+level: "intermediate"
+minutes: 14
+stage: "Stage 5 — Real World"
+slug: "29-typescript-with-react"
+track: "react"
+---
+
+## Why this exists
+
+As React applications grow, plain JavaScript starts leaving too much room for mistakes. A component may expect a `title` string but receive `undefined`. A form submit handler may assume a field exists when it does not. An API response may be treated like it always contains `data.items`, until one day it returns a different shape and the UI crashes.
+
+TypeScript helps us catch those mistakes earlier. It adds a type system on top of JavaScript so we can describe what data should look like and let the editor and compiler warn us when something does not line up. In React, this matters a lot because components pass data through props, manage state, respond to events, use refs, and compose many layers of logic together.
+
+This topic exists because TypeScript in React is not just about adding random annotations everywhere. It is about making component contracts clear. What props are required? What kind of event does this handler receive? What does this hook return? What shape does the API response have? Once those contracts are explicit, React code becomes easier to trust and refactor.
+
+## How it works
+
+Typing props is usually the first TypeScript skill React developers learn. You can type props with either an `interface` or a `type`. In practice, both can work well. Many teams prefer `interface` for object-like component props because it is easy to extend and merge. Many teams prefer `type` when they need unions, intersections, or more advanced combinations. The most important thing is consistency and clarity.
+
+State can often be inferred. If you write `useState(0)`, TypeScript knows that state is a number. If the initial value is ambiguous, such as `null`, an empty array, or a complex object that changes shape, you usually need to provide an explicit type. Good examples are `useState<User | null>(null)` or `useState<string[]>([])`.
+
+Event types matter because React wraps browser events in its own typed system. Common examples include `React.ChangeEvent<HTMLInputElement>` for input changes, `React.MouseEvent<HTMLButtonElement>` for button clicks, and `React.FormEvent<HTMLFormElement>` for form submission.
+
+Children can be typed with `React.ReactNode` when the component accepts renderable content. Another convenient pattern is `React.PropsWithChildren`, which adds a `children` prop to another prop object type automatically.
+
+Refs should also be typed so TypeScript knows which DOM API is available. A common example is `useRef<HTMLInputElement>(null)`. That tells TypeScript the ref will eventually point to an input element or stay `null` before mount.
+
+Generic components are components that work with more than one data shape. A list component is a good example. If every list item must have an `id` and a `title`, we can express that as a generic constraint and let the component work with many different item types safely.
+
+Utility types such as `Partial`, `Required`, `Pick`, `Omit`, and `ReturnType` help transform existing types instead of rewriting them from scratch. This keeps types DRY and easier to maintain.
+
+Discriminated unions are extremely useful for React props. They let one prop decide which other props are allowed. For example, a button with `variant: 'primary' | 'danger'` can use that variant as the discriminator. More advanced unions can model component modes like loading, success, and error with different required fields for each case.
+
+Context and reducers should also be typed. Context needs a well-defined value shape so consumers know exactly what is available. Reducers should use a state type plus an action union type so TypeScript can validate every dispatch case.
+
+Custom hooks deserve return types too. Many hook return types can be inferred, but for shared hooks it is often helpful to make the contract explicit, especially when the hook returns an object of handlers and values.
+
+Type-safe forms often pair well with Zod. A Zod schema defines the validation rules, and `z.infer<typeof schema>` derives the TypeScript type from that same schema so validation and types stay in sync.
+
+Typed API responses reduce guesswork. If the UI knows the exact response shape, it is less likely to assume fields that do not exist or misuse nullable values.
+
+## Syntax
+
+```tsx
+type ButtonProps = {
+  label: string
+  onClick: () => void
+}
+```
+
+## Code examples
+
+### Example 1 — Typing props with `interface`
+
+`interface` is a natural fit when your props are a straightforward object shape.
+
+```tsx
+interface ProfileCardProps {
+  name: string
+  role: string
+}
+
+function ProfileCard({ name, role }: ProfileCardProps) {
+  return (
+    <article>
+      <h2>{name}</h2>
+      <p>{role}</p>
+    </article>
+  )
+}
+```
+
+### Example 2 — Typing props with `type`
+
+`type` is equally valid and often preferred when you expect unions or intersections later.
+
+```tsx
+type BadgeProps = {
+  label: string
+  tone: 'success' | 'warning'
+}
+
+function Badge({ label, tone }: BadgeProps) {
+  return <span data-tone={tone}>{label}</span>
+}
+```
+
+### Example 3 — Optional props with `?`
+
+Optional props make it clear which values callers may omit.
+
+```tsx
+type AvatarProps = {
+  name: string
+  imageUrl?: string
+}
+
+function Avatar({ name, imageUrl }: AvatarProps) {
+  if (imageUrl) {
+    return <img src={imageUrl} alt={name} />
+  }
+
+  return <span>{name[0]}</span>
+}
+```
+
+### Example 4 — Typing `children`
+
+Use `React.ReactNode` when a component accepts renderable content.
+
+```tsx
+type PanelProps = {
+  title: string
+  children: React.ReactNode
+}
+
+function Panel({ title, children }: PanelProps) {
+  return (
+    <section>
+      <h2>{title}</h2>
+      <div>{children}</div>
+    </section>
+  )
+}
+```
+
+You can also use `React.PropsWithChildren`:
+
+```tsx
+type StackProps = React.PropsWithChildren<{
+  gap: number
+}>
+
+function Stack({ gap, children }: StackProps) {
+  return <div style={{ display: 'grid', gap }}>{children}</div>
+}
+```
+
+### Example 5 — `React.ChangeEvent` for input `onChange`
+
+Typed events tell TypeScript exactly which target API is available.
+
+```tsx
+import { useState } from 'react'
+
+function SearchField() {
+  const [query, setQuery] = useState('')
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    setQuery(event.target.value)
+  }
+
+  return <input value={query} onChange={handleChange} />
+}
+```
+
+### Example 6 — `React.FormEvent` for form `onSubmit`
+
+Form handlers should usually prevent default navigation and use a typed submit event.
+
+```tsx
+import { useState } from 'react'
+
+function LoginForm() {
+  const [email, setEmail] = useState('')
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    console.log('Submitting email:', email)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={email} onChange={(event) => setEmail(event.target.value)} />
+      <button type="submit">Login</button>
+    </form>
+  )
+}
+```
+
+### Example 7 — `useRef` with `HTMLInputElement`
+
+Typing refs makes DOM methods safe and discoverable.
+
+```tsx
+import { useRef } from 'react'
+
+function FocusInput() {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function handleClick() {
+    inputRef.current?.focus()
+  }
+
+  return (
+    <div>
+      <input ref={inputRef} />
+      <button onClick={handleClick}>Focus input</button>
+    </div>
+  )
+}
+```
+
+### Example 8 — Generic component: `List<T>`
+
+This component can render many item shapes as long as they meet the constraint.
+
+```tsx
+type ListProps<T> = {
+  items: T[]
+  getKey: (item: T) => string
+  renderItem: (item: T) => React.ReactNode
+}
+
+function List<T>({ items, getKey, renderItem }: ListProps<T>) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={getKey(item)}>{renderItem(item)}</li>
+      ))}
+    </ul>
+  )
+}
+
+function Example() {
+  const lessons = [
+    { id: 'r1', title: 'Props' },
+    { id: 'r2', title: 'State' },
+  ]
+
+  return (
+    <List
+      items={lessons}
+      getKey={(lesson) => lesson.id}
+      renderItem={(lesson) => lesson.title}
+    />
+  )
+}
+```
+
+### Example 9 — Discriminated union for button variants
+
+The discriminant narrows the type safely inside the component.
+
+```tsx
+type PrimaryButtonProps = {
+  variant: 'primary'
+  label: string
+  onClick: () => void
+}
+
+type DangerButtonProps = {
+  variant: 'danger'
+  label: string
+  onConfirmDelete: () => void
+}
+
+type ButtonProps = PrimaryButtonProps | DangerButtonProps
+
+function ActionButton(props: ButtonProps) {
+  if (props.variant === 'danger') {
+    return (
+      <button onClick={props.onConfirmDelete}>
+        {props.label}
+      </button>
+    )
+  }
+
+  return <button onClick={props.onClick}>{props.label}</button>
+}
+```
+
+### Example 10 — Typing context with TypeScript
+
+Context should expose a clear value shape.
+
+```tsx
+import { createContext, useContext, useState } from 'react'
+
+type Theme = 'light' | 'dark'
+
+type ThemeContextValue = {
+  theme: Theme
+  toggleTheme: () => void
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null)
+
+function ThemeProvider({ children }: React.PropsWithChildren) {
+  const [theme, setTheme] = useState<Theme>('light')
+
+  function toggleTheme() {
+    setTheme((currentTheme) =>
+      currentTheme === 'light' ? 'dark' : 'light',
+    )
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  )
+}
+
+function useTheme() {
+  const context = useContext(ThemeContext)
+
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider')
+  }
+
+  return context
+}
+```
+
+### Example 11 — Typing `useReducer`
+
+Reducers become much safer when both state and actions are typed.
+
+```tsx
+import { useReducer } from 'react'
+
+type CounterState = {
+  count: number
+}
+
+type CounterAction =
+  | { type: 'increment' }
+  | { type: 'decrement' }
+  | { type: 'reset'; payload: number }
+
+function counterReducer(
+  state: CounterState,
+  action: CounterAction,
+): CounterState {
+  switch (action.type) {
+    case 'increment':
+      return { count: state.count + 1 }
+    case 'decrement':
+      return { count: state.count - 1 }
+    case 'reset':
+      return { count: action.payload }
+    default:
+      return state
+  }
+}
+
+function Counter() {
+  const [state, dispatch] = useReducer(counterReducer, { count: 0 })
+
+  return (
+    <div>
+      <p>{state.count}</p>
+      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+    </div>
+  )
+}
+```
+
+### Example 12 — `Partial`, `Pick`, and `Omit`
+
+Utility types help us reuse one source type in several places.
+
+```tsx
+type User = {
+  id: string
+  name: string
+  email: string
+  role: 'admin' | 'member'
+}
+
+type UserUpdate = Partial<User>
+type UserSummary = Pick<User, 'id' | 'name' | 'role'>
+type PublicUser = Omit<User, 'email'>
+
+function updateUser(id: string, patch: UserUpdate) {
+  console.log(id, patch)
+}
+```
+
+You can also use `Required` and `ReturnType`:
+
+```tsx
+type DraftSettings = {
+  theme?: 'light' | 'dark'
+  compact?: boolean
+}
+
+type FinalSettings = Required<DraftSettings>
+
+function createSession() {
+  return {
+    token: 'abc123',
+    expiresAt: Date.now() + 1000 * 60 * 60,
+  }
+}
+
+type Session = ReturnType<typeof createSession>
+```
+
+### Example 13 — Zod inference with `z.infer`
+
+One schema can drive both validation and TypeScript types.
+
+```tsx
+import { z } from 'zod'
+
+const signupSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(8),
+})
+
+type SignupValues = z.infer<typeof signupSchema>
+
+function submitSignup(values: SignupValues) {
+  const parsedValues = signupSchema.parse(values)
+  console.log(parsedValues)
+}
+```
+
+### Example 14 — Typing an API response
+
+Typed responses help the UI handle real data more safely.
+
+```tsx
+type Lesson = {
+  id: number
+  title: string
+  completed: boolean
+}
+
+type LessonsResponse = {
+  data: Lesson[]
+  total: number
+}
+
+async function fetchLessons(): Promise<LessonsResponse> {
+  const response = await fetch('/api/lessons')
+
+  if (!response.ok) {
+    throw new Error('Failed to load lessons')
+  }
+
+  return (await response.json()) as LessonsResponse
+}
+```
+
+<LivePreview id="typescript-react" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Adding `any` as soon as TypeScript complains.
+**Fix:** Slow down and describe the real shape of the data.
+**Why:** `any` turns off the safety you are trying to gain.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Typing everything explicitly even when inference already works well.
+**Fix:** Let TypeScript infer simple cases, and add annotations where they improve clarity or solve ambiguity.
+**Why:** Over-annotation can make code noisy without adding much safety.
+</Callout>
+
+<Callout type="tip">
+If you are choosing between `interface` and `type`, the simpler answer is usually fine. Pick the one that matches your team style unless you need a specific feature like unions or declaration merging.
+</Callout>
+
+<Callout type="note">
+TypeScript checks your code at development time. It does not validate unknown runtime data by itself. That is why schemas such as Zod are useful when data comes from forms, APIs, or user input.
+</Callout>
+
+## How this is used in real projects
+
+In real products, TypeScript becomes a communication tool between parts of the app. Design systems use typed component props so consumers know exactly which variants are supported. API layers use typed responses so screens can render loading, empty, and success states without guessing. Auth context uses explicit types so every component knows whether the current user may be `null`, what permissions exist, and which values are guaranteed.
+
+Typed reducers and context also matter more as teams grow. When several developers are dispatching actions and consuming shared state, strong types reduce accidental misuse. TypeScript does not replace good architecture, but it makes good architecture easier to preserve.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is the difference between `interface` and `type` in TypeScript?
+**A:** Both can describe object shapes, and in many React prop cases either one works. `interface` is often preferred for plain object contracts because it can be extended and merged cleanly. `type` is often preferred when you need unions, intersections, mapped types, or more advanced composition. In day-to-day React work, consistency and readability matter more than treating one as universally better.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a discriminated union and when do you use it in React?
+**A:** A discriminated union is a union type where one shared field, such as `variant` or `status`, tells TypeScript which specific shape is active. In React, this is useful for component props and state objects. For example, a button with `variant: 'primary' | 'danger'` can allow different props for each case, and TypeScript can narrow safely based on the variant check.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you type the `children` prop?
+**A:** The most common answer is `React.ReactNode` when the component accepts renderable content. Another useful pattern is `React.PropsWithChildren<YourProps>`, which adds `children` automatically to an existing prop type. The choice depends on whether you want the children prop spelled out directly or bundled into a helper type.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a generic component?
+**A:** A generic component is a component that works with more than one data type while still staying type-safe. A list component is a common example. Instead of hardcoding one item shape, the component accepts a generic type parameter like `T`, and the parent provides the concrete item type. This makes reusable components flexible without giving up type safety.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="When is an explicit type often helpful with `useState`?"
+  options={[
+    "When the initial value is ambiguous, like `null` or an empty array",
+    "Only when TypeScript is disabled",
+    "Never, because inference is always enough",
+    "Only for string values"
+  ]}
+  correct={0}
+  explanation="When the initial value does not clearly reveal the full future shape, such as `null`, `[]`, or a partially defined object, an explicit generic helps TypeScript understand the intended state type."
+/>
+
+<Quiz
+  question="Which type is commonly used for renderable component children?"
+  options={["React.ReactNode", "HTMLElement", "unknown", "never"]}
+  correct={0}
+  explanation="`React.ReactNode` is the common type for content React can render, including strings, elements, fragments, arrays, and more."
+/>
+
+<Quiz
+  question="What does `z.infer<typeof schema>` do?"
+  options={[
+    "Turns a schema into a CSS class",
+    "Creates a TypeScript type from the Zod schema",
+    "Runs the schema only in production",
+    "Converts TypeScript into JSON"
+  ]}
+  correct={1}
+  explanation="`z.infer<typeof schema>` derives a TypeScript type directly from the Zod schema, which keeps validation rules and TypeScript types aligned."
+/>
+
+<Quiz
+  question="Why are discriminated unions useful in React props?"
+  options={[
+    "They allow TypeScript to narrow prop shapes based on a shared field like `variant`",
+    "They make every prop optional",
+    "They remove the need for components",
+    "They replace JSX with plain HTML"
+  ]}
+  correct={0}
+  explanation="A discriminated union lets one field identify the active prop shape, so TypeScript can safely narrow which properties exist in each case."
+/>
+
+<MarkDone slug="29-typescript-with-react" track="react" />

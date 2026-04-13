@@ -1,0 +1,617 @@
+---
+title: "Component communication"
+description: "Learn how data moves through React with props, callback props, lifted state, and one shared source of truth."
+level: "intermediate"
+minutes: 9
+stage: "Stage 3 — Hooks"
+slug: "13-component-communication"
+track: "react"
+---
+
+## Why this exists
+
+React applications are made of components, but components do not live in isolation. A parent needs to pass data into a child. A child needs to notify a parent when something happened. Two sibling components often need to stay in sync with the same shared data. If you do not understand component communication, your app quickly becomes confusing because state gets duplicated, screens drift out of sync, and components stop agreeing on what the "real" value is.
+
+This topic exists because React follows a very specific data flow model. Data moves from parent to child. A child cannot directly push data upward by itself. Siblings cannot directly talk to each other. Once you understand those rules, React code becomes much easier to design because you know exactly where state should live and how changes should move through the component tree.
+
+Component communication is also the bridge to larger state topics. If lifting state to a parent solves the problem, keep it simple. If lifting state starts to feel painful because many distant components need the same data, that is usually your sign that you are moving toward Context or another state-sharing approach.
+
+## How it works
+
+The main rule in React is that data flows top down. A parent passes values to children through props. That is parent-to-child communication.
+
+If a child needs to send information back up, it does not directly modify the parent. Instead, the parent passes a function down as a prop, and the child calls that function. That is the callback props pattern. The parent still owns the state, and the child reports an event or a value.
+
+Sibling communication works the same way, just with one extra step. One sibling cannot directly change another sibling. Instead:
+
+- both siblings share a common parent
+- the parent owns the shared state
+- the parent passes the current value down to the sibling that needs to read it
+- the parent passes a callback down to the sibling that needs to change it
+
+This pattern is called lifting state up. You move the state to the closest common ancestor of the components that need it.
+
+The phrase closest common ancestor matters. If state is needed by two child components inside the same parent, that parent is usually the right place. If you lift state much higher than necessary, you create extra re-renders and make your code harder to follow. If you keep state too low, components that should stay in sync end up holding separate copies.
+
+This is why React encourages one source of truth. If two components depend on the same piece of data, there should usually be one owner for that data. Other components read it through props and request changes through callbacks.
+
+A useful question is: who needs to read this state, and who needs to change it? The answer helps you find the correct owner.
+
+- If only one component needs it, keep it local.
+- If a parent and child both need it, the parent probably owns it.
+- If siblings need it, the closest common parent should own it.
+- If many distant branches need it, lifting state may become painful, and Context becomes worth considering.
+
+The big limitation to remember is that siblings cannot directly communicate without a parent coordinating them. React does not support random component-to-component messaging by default. That is intentional. It keeps data flow predictable.
+
+## Syntax
+
+```tsx
+function Parent() {
+  const [value, setValue] = useState('')
+
+  return <Child value={value} onChange={setValue} />
+}
+```
+
+## Code examples
+
+### Example 1 — Parent passes data to child via props
+
+Parent-to-child communication is the simplest and most common pattern in React.
+
+```tsx
+function Greeting({ name }: { name: string }) {
+  return <h2>Hello, {name}</h2>
+}
+
+export default function App() {
+  return <Greeting name="Mahesh" />
+}
+```
+
+The parent owns the value `"Mahesh"` and passes it into the child through props.
+
+### Example 2 — Child calls parent function with a callback prop
+
+When a child needs to report something upward, the parent passes a function.
+
+```tsx
+import { useState } from 'react'
+
+function NameForm({ onSubmitName }: { onSubmitName: (name: string) => void }) {
+  const [name, setName] = useState('')
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onSubmitName(name)
+    setName('')
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder="Enter your name"
+      />
+      <button type="submit">Save</button>
+    </form>
+  )
+}
+
+export default function ParentExample() {
+  const [savedName, setSavedName] = useState('No name yet')
+
+  return (
+    <section>
+      <p>Saved name: {savedName}</p>
+      <NameForm onSubmitName={setSavedName} />
+    </section>
+  )
+}
+```
+
+The child does not own `savedName`. It only reports a new value upward by calling the callback prop.
+
+### Example 3 — Sibling communication through a parent
+
+If two siblings need the same data, the parent should own it.
+
+```tsx
+import { useState } from 'react'
+
+function TemperatureInput({
+  temperature,
+  onTemperatureChange,
+}: {
+  temperature: string
+  onTemperatureChange: (value: string) => void
+}) {
+  return (
+    <input
+      value={temperature}
+      onChange={(event) => onTemperatureChange(event.target.value)}
+      placeholder="Enter temperature"
+    />
+  )
+}
+
+function TemperatureDisplay({ temperature }: { temperature: string }) {
+  return <p>Current temperature: {temperature || 'not set'}</p>
+}
+
+export default function SiblingCommunication() {
+  const [temperature, setTemperature] = useState('')
+
+  return (
+    <section>
+      <TemperatureInput
+        temperature={temperature}
+        onTemperatureChange={setTemperature}
+      />
+      <TemperatureDisplay temperature={temperature} />
+    </section>
+  )
+}
+```
+
+The input sibling changes the value, and the display sibling reads the same value. The parent coordinates both.
+
+### Example 4 — Lifting state up: before and after
+
+This example shows why separate local state can become a problem.
+
+```tsx
+import { useState } from 'react'
+
+function SearchBoxBefore() {
+  const [query, setQuery] = useState('')
+
+  return (
+    <input
+      value={query}
+      onChange={(event) => setQuery(event.target.value)}
+      placeholder="Search"
+    />
+  )
+}
+
+function SearchSummaryBefore() {
+  const [query, setQuery] = useState('')
+
+  return <p>Showing results for: {query || 'nothing'}</p>
+}
+
+export function BeforeLiftingState() {
+  return (
+    <section>
+      <SearchBoxBefore />
+      <SearchSummaryBefore />
+    </section>
+  )
+}
+```
+
+The two components look related, but they each hold their own `query`, so they do not stay in sync.
+
+```tsx
+import { useState } from 'react'
+
+function SearchBoxAfter({
+  query,
+  onQueryChange,
+}: {
+  query: string
+  onQueryChange: (value: string) => void
+}) {
+  return (
+    <input
+      value={query}
+      onChange={(event) => onQueryChange(event.target.value)}
+      placeholder="Search"
+    />
+  )
+}
+
+function SearchSummaryAfter({ query }: { query: string }) {
+  return <p>Showing results for: {query || 'nothing'}</p>
+}
+
+export function AfterLiftingState() {
+  const [query, setQuery] = useState('')
+
+  return (
+    <section>
+      <SearchBoxAfter query={query} onQueryChange={setQuery} />
+      <SearchSummaryAfter query={query} />
+    </section>
+  )
+}
+```
+
+Now there is one source of truth. Both components stay synchronized because the parent owns the shared state.
+
+### Example 5 — Controlled input where the parent holds the value
+
+This pattern is common in reusable form components.
+
+```tsx
+import { useState } from 'react'
+
+function EmailInput({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <input
+      type="email"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder="Enter email"
+    />
+  )
+}
+
+export default function ControlledInputExample() {
+  const [email, setEmail] = useState('')
+
+  return (
+    <section>
+      <EmailInput value={email} onChange={setEmail} />
+      <p>Typed email: {email || 'nothing yet'}</p>
+    </section>
+  )
+}
+```
+
+The input UI lives in the child, but the actual value is owned by the parent.
+
+### Example 6 — List and detail view with sibling coordination
+
+This is a classic example of sibling communication in real apps.
+
+```tsx
+import { useState } from 'react'
+
+type Product = {
+  id: number
+  name: string
+  description: string
+}
+
+const products: Product[] = [
+  { id: 1, name: 'Keyboard', description: 'Mechanical keyboard' },
+  { id: 2, name: 'Mouse', description: 'Wireless mouse' },
+  { id: 3, name: 'Monitor', description: '27 inch display' },
+]
+
+function ProductList({
+  items,
+  selectedId,
+  onSelect,
+}: {
+  items: Product[]
+  selectedId: number | null
+  onSelect: (id: number) => void
+}) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={item.id}>
+          <button
+            onClick={() => onSelect(item.id)}
+            style={{ fontWeight: selectedId === item.id ? 'bold' : 'normal' }}
+          >
+            {item.name}
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function ProductDetail({ product }: { product: Product | null }) {
+  if (!product) {
+    return <p>Select a product to see details.</p>
+  }
+
+  return (
+    <article>
+      <h3>{product.name}</h3>
+      <p>{product.description}</p>
+    </article>
+  )
+}
+
+export default function ListDetailExample() {
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const selectedProduct =
+    products.find((product) => product.id === selectedId) ?? null
+
+  return (
+    <section>
+      <ProductList
+        items={products}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+      />
+      <ProductDetail product={selectedProduct} />
+    </section>
+  )
+}
+```
+
+The list and detail components are siblings. The parent owns the selected ID so both stay in sync.
+
+### Example 7 — Form in child submits data into parent state
+
+This is the callback prop pattern with an array in the parent.
+
+```tsx
+import { useState } from 'react'
+
+function TodoForm({ onAddTodo }: { onAddTodo: (title: string) => void }) {
+  const [title, setTitle] = useState('')
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!title.trim()) return
+
+    onAddTodo(title.trim())
+    setTitle('')
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        placeholder="Add a todo"
+      />
+      <button type="submit">Add</button>
+    </form>
+  )
+}
+
+export default function TodoApp() {
+  const [todos, setTodos] = useState<string[]>([])
+
+  function addTodo(title: string) {
+    setTodos((current) => [...current, title])
+  }
+
+  return (
+    <section>
+      <TodoForm onAddTodo={addTodo} />
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo}>{todo}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+The child form collects input, but the parent owns the todo list because it is the shared application state.
+
+### Example 8 — Counter in child reports its value to parent
+
+Sometimes the child keeps local state but still reports changes upward.
+
+```tsx
+import { useState } from 'react'
+
+function Counter({
+  onCountChange,
+}: {
+  onCountChange: (value: number) => void
+}) {
+  const [count, setCount] = useState(0)
+
+  function increment() {
+    const nextCount = count + 1
+    setCount(nextCount)
+    onCountChange(nextCount)
+  }
+
+  return <button onClick={increment}>Child count: {count}</button>
+}
+
+export default function CounterReporter() {
+  const [latestCount, setLatestCount] = useState(0)
+
+  return (
+    <section>
+      <p>Last value reported to parent: {latestCount}</p>
+      <Counter onCountChange={setLatestCount} />
+    </section>
+  )
+}
+```
+
+This pattern is useful when the child owns its own UI state, but the parent still needs to know about the latest value.
+
+### Example 9 — Complete example: search input and results list coordinated by parent
+
+This combines parent-to-child props, child-to-parent callbacks, and shared state in one realistic flow.
+
+```tsx
+import { useMemo, useState } from 'react'
+
+const allCourses = [
+  'React basics',
+  'Advanced React patterns',
+  'Next.js fundamentals',
+  'JavaScript arrays',
+  'JavaScript promises',
+]
+
+function SearchInput({
+  query,
+  onQueryChange,
+}: {
+  query: string
+  onQueryChange: (value: string) => void
+}) {
+  return (
+    <input
+      value={query}
+      onChange={(event) => onQueryChange(event.target.value)}
+      placeholder="Search courses"
+    />
+  )
+}
+
+function ResultsList({ results }: { results: string[] }) {
+  if (results.length === 0) {
+    return <p>No matching courses.</p>
+  }
+
+  return (
+    <ul>
+      {results.map((result) => (
+        <li key={result}>{result}</li>
+      ))}
+    </ul>
+  )
+}
+
+export default function SearchCoordinator() {
+  const [query, setQuery] = useState('')
+
+  const filteredCourses = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+
+    if (!normalizedQuery) {
+      return allCourses
+    }
+
+    return allCourses.filter((course) =>
+      course.toLowerCase().includes(normalizedQuery),
+    )
+  }, [query])
+
+  return (
+    <section>
+      <SearchInput query={query} onQueryChange={setQuery} />
+      <ResultsList results={filteredCourses} />
+    </section>
+  )
+}
+```
+
+The parent coordinates everything:
+
+- it owns the search query
+- it calculates the filtered results
+- it passes the value to the input
+- it passes the result list to the display component
+
+<LivePreview id="component-communication" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Keeping the same value in state in two different components.
+**Fix:** Move the shared state to one owner.
+**Why:** Duplicate state drifts out of sync and creates bugs where different parts of the UI disagree.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Trying to make siblings communicate directly.
+**Fix:** Let the closest common parent coordinate shared state.
+**Why:** React data flow is top down. Siblings do not directly own each other’s data.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Lifting state too high in the tree.
+**Fix:** Lift it only to the closest common ancestor that actually needs it.
+**Why:** Unnecessarily high state ownership can cause extra re-renders and make the app harder to reason about.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Letting a child mutate parent state directly.
+**Fix:** Pass a callback prop from the parent and call that callback from the child.
+**Why:** The parent should stay the owner of its state. The child requests a change instead of taking control.
+</Callout>
+
+<Callout type="tip">
+If two components need the same data, lift it to their closest common ancestor.
+</Callout>
+
+<Callout type="tip">
+Identify who owns the state by asking: who needs to read it and who needs to change it.
+</Callout>
+
+<Callout type="warning">
+Do not lift state higher than needed. It solves sharing problems, but it can also create unnecessary re-renders if used carelessly.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you pass data from a child component to a parent?
+**A:** A parent passes a function down to the child as a prop. When the child wants to send data upward, it calls that function and passes the new value or event data as an argument. This is called the callback props pattern.
+</Callout>
+
+## How this is used in real projects
+
+Most real React screens are coordination problems. A search bar updates a results grid. A selected item in a sidebar updates a detail panel. A form field updates validation messages and a submit button state. All of those are examples of component communication.
+
+Production apps also force you to think carefully about state ownership. If a filter value affects the table, the chart, and the summary cards, that filter state should not live inside only one of those components. It should live in the closest parent that coordinates all three. When the state is owned at the right level, the UI stays consistent.
+
+You also start to notice when lifting state stops feeling comfortable. If you have to pass the same props through many layers that do not care about them, that is a sign that simple prop drilling is becoming painful. That pain is what leads into the next topic: Context.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** How do you pass data from a parent to a child in React?
+**A:** You pass data from a parent to a child through props. The parent renders the child component and includes values as attributes, and the child receives them as function parameters or through a props object.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you pass data from a child to a parent?
+**A:** A child sends data to a parent by calling a callback function that the parent passed down as a prop. The child does not directly change parent state. Instead, it calls the function and the parent updates its own state.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do siblings communicate in React?
+**A:** Siblings communicate through their closest common parent. The parent owns the shared state, passes the current value to the sibling that needs to read it, and passes callbacks to the sibling that needs to change it. Siblings do not directly communicate with each other.
+</Callout>
+
+<Callout type="interview">
+**Q:** What does lifting state up mean and when do you do it?
+**A:** Lifting state up means moving state from a child component into a parent so multiple components can share one source of truth. You do it when more than one component needs to read or change the same data. The correct place is usually the closest common ancestor of those components.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="How does a child component send data to its parent?"
+  options={[
+    "By changing the parent component directly",
+    "By calling a callback function passed as a prop",
+    "By importing the parent state file",
+    "By using a sibling component"
+  ]}
+  correct={1}
+  explanation="A child sends data upward by calling a callback function that the parent passed down. The parent remains the owner of the state."
+/>
+
+<Quiz
+  question="Where should shared state usually live?"
+  options={[
+    "In the browser DOM",
+    "In whichever child renders first",
+    "In the closest common ancestor of the components that need it",
+    "In every component that needs it"
+  ]}
+  correct={2}
+  explanation="Shared state should usually live in the closest common ancestor so there is one source of truth and the parent can coordinate all components that need the data."
+/>
+
+<MarkDone slug="13-component-communication" track="react" />

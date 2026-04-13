@@ -1,0 +1,374 @@
+---
+title: "Authentication in React"
+description: "Learn the core authentication architecture every advanced React app needs: login flow, token storage tradeoffs, protected routes, role-based UI, OAuth basics, and why server checks matter."
+level: "advanced"
+minutes: 12
+stage: "Stage 6 — Advanced"
+slug: "35-authentication"
+track: "react"
+---
+
+## Why this exists
+
+Authentication is one of the first places where frontend architecture and real security collide. A UI can show a login form in a few minutes, but a production-ready auth flow involves much more than that: token handling, session persistence, route protection, role-based rendering, logout behavior, and a clear rule about what the client may trust versus what only the server may decide.
+
+This topic exists because many React developers accidentally treat authentication as a purely frontend concern. It is not. The frontend participates in auth, but the actual security guarantees come from server-side verification. If the client alone decides who is logged in or what role a user has, the app is not truly secure.
+
+A strong React developer needs to understand both parts: how the UI responds to auth state, and where the real trust boundary lives.
+
+## How it works
+
+The full login flow usually looks like this:
+
+1. the user submits credentials or starts an OAuth flow
+2. the backend verifies the identity
+3. the server returns a session or token
+4. the app stores auth state and updates the UI
+5. protected routes and protected data are checked again on the server
+
+The frontend’s job is to reflect auth state clearly and guide the user through sign-in, sign-out, loading, expired sessions, and unauthorized states.
+
+Token and cookie basics matter because auth state has to live somewhere. Common options include:
+
+- HTTP-only cookies
+- access tokens and refresh tokens
+- in-memory auth state backed by a session endpoint
+
+HTTP-only cookies are usually safer for web apps because JavaScript cannot read them directly, which reduces some XSS risk. Storing tokens in `localStorage` is simpler, but it increases exposure if malicious script reaches the page. That is why token storage tradeoffs matter.
+
+Protected routes are the next major concept. In React SPAs, a protected route often means checking auth state before rendering a screen and redirecting the user if needed. That helps the user experience, but it is not the real security layer. Real protection must still happen on the server when data is requested.
+
+Role-based UI rendering is similar. The client may hide or show admin buttons based on a role field, but the server must still verify that role before allowing privileged actions.
+
+OAuth flows are also common in modern apps. Instead of handling passwords directly, the app may send users to Google, GitHub, or another provider. The backend still validates the result and creates the session.
+
+For React apps, auth state is often exposed through context or a custom hook such as `useAuth()`. That gives components one place to read the current user, role, loading state, and sign-out logic. The pattern is useful, but it is still a UI convenience layer, not the source of truth for security.
+
+The most important mental model is this:
+
+- client-side auth checks improve UX
+- server-side auth checks provide real security
+
+## Syntax
+
+```tsx
+if (!user) {
+  return <Navigate to="/login" replace />
+}
+```
+
+## Code examples
+
+### Example 1 — Basic auth context
+
+React apps often centralize auth state in one provider.
+
+```tsx
+import { createContext, useContext, useMemo, useState } from 'react'
+
+type User = {
+  id: string
+  name: string
+  role: 'user' | 'admin'
+}
+
+type AuthContextValue = {
+  user: User | null
+  signIn: (user: User) => void
+  signOut: () => void
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+export function AuthProvider({
+  children,
+}: React.PropsWithChildren) {
+  const [user, setUser] = useState<User | null>(null)
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      signIn: (nextUser) => setUser(nextUser),
+      signOut: () => setUser(null),
+    }),
+    [user],
+  )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+
+  if (!context) {
+    throw new Error('useAuth must be used inside AuthProvider')
+  }
+
+  return context
+}
+```
+
+### Example 2 — Login form flow
+
+The form usually calls the backend, then updates UI state if sign-in succeeds.
+
+```tsx
+import { useState } from 'react'
+import { useAuth } from './auth'
+
+export default function LoginForm() {
+  const { signIn } = useAuth()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Login failed')
+    }
+
+    const user = (await response.json()) as {
+      id: string
+      name: string
+      role: 'user' | 'admin'
+    }
+
+    signIn(user)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={email} onChange={(event) => setEmail(event.target.value)} />
+      <input
+        type="password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+      <button type="submit">Sign in</button>
+    </form>
+  )
+}
+```
+
+### Example 3 — Protected route
+
+Client-side route protection is useful for navigation and UX.
+
+```tsx
+import { Navigate } from 'react-router-dom'
+import { useAuth } from './auth'
+
+export default function ProtectedRoute({
+  children,
+}: React.PropsWithChildren) {
+  const { user } = useAuth()
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
+```
+
+### Example 4 — Role-based UI rendering
+
+The UI may change based on role, but the server must still enforce the real rule.
+
+```tsx
+import { useAuth } from './auth'
+
+export default function AdminTools() {
+  const { user } = useAuth()
+
+  if (!user || user.role !== 'admin') {
+    return null
+  }
+
+  return <button>Open admin panel</button>
+}
+```
+
+### Example 5 — Logout flow
+
+Signing out should clear session state on both server and client.
+
+```tsx
+import { useAuth } from './auth'
+
+export default function LogoutButton() {
+  const { signOut } = useAuth()
+
+  async function handleLogout() {
+    await fetch('/api/logout', { method: 'POST' })
+    signOut()
+  }
+
+  return <button onClick={() => void handleLogout()}>Logout</button>
+}
+```
+
+### Example 6 — Token storage tradeoff
+
+This shows the difference in style, not a universal recommendation.
+
+```ts
+// Simpler but more exposed
+localStorage.setItem('access_token', token)
+```
+
+```ts
+// Safer web app pattern
+// Store the session in an HTTP-only cookie set by the server
+```
+
+For browser-based apps, HTTP-only cookies are often the safer default.
+
+### Example 7 — OAuth flow concept
+
+The frontend usually starts the flow, but the server handles verification.
+
+```tsx
+export default function OAuthButtons() {
+  return (
+    <div>
+      <a href="/api/auth/google">Continue with Google</a>
+      <a href="/api/auth/github">Continue with GitHub</a>
+    </div>
+  )
+}
+```
+
+### Example 8 — Server-side auth check before returning protected data
+
+This is where real trust belongs.
+
+```ts
+export async function getBillingData(request: Request) {
+  const session = await getSessionFromRequest(request)
+
+  if (!session) {
+    throw new Error('Unauthorized')
+  }
+
+  return fetchBillingDataForUser(session.userId)
+}
+```
+
+### Example 9 — Full auth-aware app shell pattern
+
+The app shell can react to auth state while server checks still protect data.
+
+```tsx
+function AppShell() {
+  const { user } = useAuth()
+
+  return (
+    <div>
+      <header>
+        {user ? <p>Welcome, {user.name}</p> : <a href="/login">Sign in</a>}
+      </header>
+      <main>{user ? <Dashboard /> : <LandingPage />}</main>
+    </div>
+  )
+}
+```
+
+<LivePreview id="authentication" />
+
+## Common mistakes
+
+<Callout type="warning">
+Never rely on client-side session checks for real security. Always verify auth and authorization on the server before returning protected data or allowing privileged actions.
+</Callout>
+
+<Callout type="tip">
+Use client-side protected routes to improve UX, but treat them as navigation helpers, not your true security boundary.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Treating hidden admin buttons as real authorization.
+**Fix:** Hide the UI if you want, but enforce the permission on the server.
+**Why:** Anyone can manipulate client-side code or requests.
+</Callout>
+
+<Callout type="note">
+OAuth changes how identity is verified, but it does not remove the need for sessions, server checks, or role-based authorization decisions in your own app.
+</Callout>
+
+## How this is used in real projects
+
+In real apps, authentication usually becomes a shared architecture layer. The frontend needs a consistent way to know whether the user is signed in, what role they have, whether the session is still loading, and how to sign out gracefully. At the same time, the backend needs to verify sessions, protect data endpoints, and enforce permissions every time a sensitive action happens.
+
+That is why strong teams separate concerns clearly:
+
+- the frontend manages auth-aware UX
+- the server owns trust and enforcement
+
+When that split is clear, the app becomes much easier to reason about.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** How do you implement authentication in a React app?
+**A:** I usually think of it in layers. The backend verifies identity and creates the session or token. The frontend stores auth state in a safe way, exposes it through context or a hook, and uses that state for protected routes, user menus, and role-aware UI. The crucial rule is that the server still verifies every protected request, because the frontend alone cannot provide real security.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between JWT sessions and database sessions?
+**A:** JWT sessions store session information inside a signed token, which can reduce database reads but makes revocation and mutation more complex. Database sessions store session records server-side and use a session identifier on the client, which gives more centralized control but adds a lookup step. The right choice depends on your architecture, revocation needs, and scaling tradeoffs.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you protect routes in a React application?
+**A:** On the client, I use protected route components or auth-aware layouts to redirect unauthorized users and improve UX. But for real security, I also protect the underlying server endpoints and data access layer so unauthorized users cannot get the data even if they bypass the client UI.
+</Callout>
+
+<Callout type="interview">
+**Q:** What should role-based rendering control, and what should it not control?
+**A:** Role-based rendering should control the UI the user sees, such as whether admin controls appear. It should not be the only enforcement layer for actual permissions. The server must still verify the role before allowing privileged actions or returning protected data.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Where should real auth checks happen for security?"
+  options={[
+    "On the server",
+    "Only in the React component tree",
+    "Only in localStorage",
+    "Only in CSS classes"
+  ]}
+  correct={0}
+  explanation="Client-side auth checks help the user experience, but real security comes from server-side verification before protected data or actions are allowed."
+/>
+
+<Quiz
+  question="Which storage approach is often safer for web sessions than localStorage?"
+  options={["HTTP-only cookies", "Inline HTML comments", "CSS variables", "Query parameters"]}
+  correct={0}
+  explanation="HTTP-only cookies are often safer because browser JavaScript cannot read them directly, which reduces exposure in some XSS scenarios."
+/>
+
+<Quiz
+  question="What does role-based UI rendering mainly control?"
+  options={[
+    "What the user sees in the interface",
+    "Whether the server must verify permissions",
+    "Whether passwords are encrypted",
+    "Whether OAuth exists"
+  ]}
+  correct={0}
+  explanation="Role-based UI rendering is mainly about what appears in the interface. The server still needs to enforce the real permission checks."
+/>
+
+<MarkDone slug="35-authentication" track="react" />

@@ -1,0 +1,636 @@
+---
+title: "Forms at real-world level"
+description: "Learn why React Hook Form and Zod are the modern form stack, how to handle validation, field arrays, async checks, file uploads, multi-step flows, and accessible error handling."
+level: "intermediate"
+minutes: 12
+stage: "Stage 5 — Real World"
+slug: "22-forms-real-world"
+track: "react"
+---
+
+## Why this exists
+
+Simple controlled inputs are enough for small demos, but real application forms are much harder. Production forms often need validation, async checks, conditional fields, file uploads, repeatable rows, step-by-step flows, submit state, reset behavior, accessibility support, and strong TypeScript safety. Managing all of that by hand with plain `useState` quickly becomes repetitive and expensive.
+
+This is why React Hook Form is so popular. It gives you a form system built around performance and developer ergonomics. Instead of re-rendering on every keystroke the way large controlled forms often do, React Hook Form uses uncontrolled inputs with refs under the hood and only syncs what it needs. When paired with Zod, you also get a clean schema-driven validation story and strongly inferred types.
+
+This topic matters because forms are one of the most common and most failure-prone parts of frontend work. Strong form handling makes apps feel faster, safer, and easier to maintain.
+
+## How it works
+
+React Hook Form exists to manage form registration, validation, submission, and form state efficiently. The key idea is that inputs are usually registered rather than fully controlled. That means React Hook Form can keep much of the field state out of React’s render loop until it actually matters.
+
+The `register` function connects an input to the form. You spread it into the field and React Hook Form tracks its value and validation rules.
+
+`handleSubmit` wraps your submit handler. It runs validation first, then calls your function only if the form is valid.
+
+`formState` gives useful metadata such as:
+
+- `errors`
+- `isSubmitting`
+- `isDirty`
+- `isValid`
+
+`watch` lets you observe field values in real time, which is useful for previews or conditional UI.
+
+`setValue`, `getValues`, and `reset` give programmatic control over the form when you need to update values manually, inspect the current form state, or return the form to a known state.
+
+`Controller` is used when a third-party component does not expose a simple native input API. This is common for date pickers, custom selects, and UI library controls.
+
+`useFieldArray` handles dynamic lists of fields, such as repeating addresses, phone numbers, or line items. Instead of manually managing array state and field names, React Hook Form gives you helpers like `append` and `remove`.
+
+Zod complements React Hook Form by defining a schema for your form values. With `zodResolver`, React Hook Form can use that schema for validation. One of the best parts is that TypeScript types can be inferred directly from the schema with `z.infer<typeof schema>`, which keeps validation and types in sync.
+
+Real forms also need async validation, such as checking whether a username is already taken. That logic usually runs in a validator function or submit flow and should handle loading and race conditions carefully.
+
+Accessibility matters too. Labels should be properly associated with inputs, error messages should be linked with `aria-describedby`, and error summaries should help users quickly understand what needs attention.
+
+## Syntax
+
+```tsx
+const {
+  register,
+  handleSubmit,
+  formState: { errors },
+} = useForm()
+```
+
+## Code examples
+
+### Example 1 — React Hook Form basic login form
+
+This is the smallest practical setup.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type LoginValues = {
+  email: string
+  password: string
+}
+
+export default function LoginForm() {
+  const { register, handleSubmit } = useForm<LoginValues>()
+
+  function onSubmit(values: LoginValues) {
+    console.log(values)
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input {...register('email')} />
+      <input type="password" {...register('password')} />
+      <button type="submit">Login</button>
+    </form>
+  )
+}
+```
+
+### Example 2 — Inline validation rules
+
+Validation rules can live right in `register`.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type SignupValues = {
+  username: string
+  email: string
+}
+
+export default function SignupForm() {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SignupValues>()
+
+  return (
+    <form onSubmit={handleSubmit(console.log)}>
+      <input
+        {...register('username', {
+          required: 'Username is required',
+          minLength: {
+            value: 3,
+            message: 'Username must be at least 3 characters',
+          },
+        })}
+      />
+      {errors.username ? <p>{errors.username.message}</p> : null}
+
+      <input
+        {...register('email', {
+          required: 'Email is required',
+          pattern: {
+            value: /\S+@\S+\.\S+/,
+            message: 'Enter a valid email address',
+          },
+        })}
+      />
+      {errors.email ? <p>{errors.email.message}</p> : null}
+    </form>
+  )
+}
+```
+
+### Example 3 — Zod schema with `zodResolver`
+
+This is the modern typed validation setup.
+
+```tsx
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+
+const schema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.email('Enter a valid email address'),
+})
+
+type FormValues = z.infer<typeof schema>
+
+export default function ProfileForm() {
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+  })
+}
+```
+
+### Example 4 — Zod with TypeScript type inference
+
+Define the schema once and infer the type from it.
+
+```tsx
+import { z } from 'zod'
+
+const registrationSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(8),
+  age: z.number().min(18),
+})
+
+type RegistrationValues = z.infer<typeof registrationSchema>
+```
+
+This avoids writing separate validation and TypeScript definitions that can drift apart.
+
+### Example 5 — `formState.errors`
+
+Error messages should be rendered clearly and accessibly.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type ContactValues = {
+  name: string
+}
+
+function ContactForm() {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ContactValues>()
+
+  return (
+    <form onSubmit={handleSubmit(console.log)}>
+      <label htmlFor="name">Name</label>
+      <input
+        id="name"
+        aria-describedby={errors.name ? 'name-error' : undefined}
+        {...register('name', { required: 'Name is required' })}
+      />
+      {errors.name ? <p id="name-error">{errors.name.message}</p> : null}
+    </form>
+  )
+}
+```
+
+### Example 6 — `watch`
+
+`watch` is useful for live previews.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type ProfileValues = {
+  displayName: string
+}
+
+function ProfilePreviewForm() {
+  const { register, watch } = useForm<ProfileValues>()
+  const displayName = watch('displayName')
+
+  return (
+    <section>
+      <input {...register('displayName')} />
+      <p>Preview: {displayName || 'Anonymous user'}</p>
+    </section>
+  )
+}
+```
+
+### Example 7 — `Controller` for custom components
+
+Use `Controller` when a component is controlled and does not support direct `register`.
+
+```tsx
+import { Controller, useForm } from 'react-hook-form'
+
+type FormValues = {
+  role: string
+}
+
+function CustomSelect({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">Select role</option>
+      <option value="developer">Developer</option>
+      <option value="designer">Designer</option>
+    </select>
+  )
+}
+
+function RoleForm() {
+  const { control } = useForm<FormValues>({
+    defaultValues: { role: '' },
+  })
+
+  return (
+    <Controller
+      name="role"
+      control={control}
+      render={({ field }) => <CustomSelect value={field.value} onChange={field.onChange} />}
+    />
+  )
+}
+```
+
+### Example 8 — `useFieldArray`
+
+Field arrays handle repeatable sections like skills or addresses.
+
+```tsx
+import { useFieldArray, useForm } from 'react-hook-form'
+
+type FormValues = {
+  skills: { value: string }[]
+}
+
+function SkillsForm() {
+  const { control, register } = useForm<FormValues>({
+    defaultValues: {
+      skills: [{ value: 'React' }],
+    },
+  })
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'skills',
+  })
+
+  return (
+    <section>
+      {fields.map((field, index) => (
+        <div key={field.id}>
+          <input {...register(`skills.${index}.value`)} />
+          <button type="button" onClick={() => remove(index)}>Remove</button>
+        </div>
+      ))}
+      <button type="button" onClick={() => append({ value: '' })}>
+        Add skill
+      </button>
+    </section>
+  )
+}
+```
+
+### Example 9 — Async validation
+
+Server-backed checks should be asynchronous.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type UsernameValues = {
+  username: string
+}
+
+function UsernameForm() {
+  const { register } = useForm<UsernameValues>()
+
+  async function validateUsername(username: string) {
+    const response = await fetch(`/api/check-username?username=${username}`)
+    const data = (await response.json()) as { available: boolean }
+
+    return data.available || 'Username is already taken'
+  }
+
+  return (
+    <input
+      {...register('username', {
+        validate: validateUsername,
+      })}
+    />
+  )
+}
+```
+
+### Example 10 — Multi-step form
+
+One form can span multiple screens while keeping one source of truth.
+
+```tsx
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+
+type WizardValues = {
+  name: string
+  email: string
+}
+
+function WizardForm() {
+  const [step, setStep] = useState(1)
+  const form = useForm<WizardValues>()
+
+  return (
+    <form onSubmit={form.handleSubmit(console.log)}>
+      {step === 1 ? <input {...form.register('name')} /> : null}
+      {step === 2 ? <input {...form.register('email')} /> : null}
+
+      {step > 1 ? (
+        <button type="button" onClick={() => setStep((value) => value - 1)}>
+          Back
+        </button>
+      ) : null}
+
+      {step < 2 ? (
+        <button type="button" onClick={() => setStep((value) => value + 1)}>
+          Next
+        </button>
+      ) : (
+        <button type="submit">Submit</button>
+      )}
+    </form>
+  )
+}
+```
+
+### Example 11 — File input with preview
+
+File inputs often need preview handling outside the library itself.
+
+```tsx
+import { useState } from 'react'
+
+function AvatarUpload() {
+  const [previewUrl, setPreviewUrl] = useState('')
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file) return
+
+    setPreviewUrl(URL.createObjectURL(file))
+  }
+
+  return (
+    <section>
+      <input type="file" accept="image/*" onChange={handleFileChange} />
+      {previewUrl ? <img src={previewUrl} alt="Preview" /> : null}
+    </section>
+  )
+}
+```
+
+### Example 12 — Reset after success
+
+Resetting the form is a common post-submit behavior.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type NewsletterValues = {
+  email: string
+}
+
+function NewsletterForm() {
+  const { register, handleSubmit, reset } = useForm<NewsletterValues>()
+
+  function onSubmit(values: NewsletterValues) {
+    console.log(values)
+    reset()
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input {...register('email')} />
+      <button type="submit">Subscribe</button>
+    </form>
+  )
+}
+```
+
+### Example 13 — `isDirty`
+
+`isDirty` helps warn about unsaved changes.
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+type ProfileValues = {
+  bio: string
+}
+
+function EditProfileForm() {
+  const {
+    register,
+    formState: { isDirty },
+  } = useForm<ProfileValues>({
+    defaultValues: { bio: '' },
+  })
+
+  return (
+    <section>
+      <textarea {...register('bio')} />
+      {isDirty ? <p>You have unsaved changes.</p> : null}
+    </section>
+  )
+}
+```
+
+### Example 14 — Complete registration form
+
+This brings the major real-world pieces together.
+
+```tsx
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Controller, useFieldArray, useForm } from 'react-hook-form'
+import { z } from 'zod'
+
+const registrationSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.email('Enter a valid email address'),
+  role: z.enum(['developer', 'designer']),
+  skills: z.array(z.object({ value: z.string().min(1, 'Skill is required') })),
+})
+
+type RegistrationValues = z.infer<typeof registrationSchema>
+
+function RegistrationForm() {
+  const {
+    control,
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<RegistrationValues>({
+    resolver: zodResolver(registrationSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+      role: 'developer',
+      skills: [{ value: 'React' }],
+    },
+  })
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'skills',
+  })
+
+  return (
+    <form onSubmit={handleSubmit(console.log)}>
+      <input {...register('name')} />
+      {errors.name ? <p>{errors.name.message}</p> : null}
+
+      <input {...register('email')} />
+      {errors.email ? <p>{errors.email.message}</p> : null}
+
+      <Controller
+        name="role"
+        control={control}
+        render={({ field }) => (
+          <select value={field.value} onChange={field.onChange}>
+            <option value="developer">Developer</option>
+            <option value="designer">Designer</option>
+          </select>
+        )}
+      />
+
+      {fields.map((field, index) => (
+        <div key={field.id}>
+          <input {...register(`skills.${index}.value`)} />
+          <button type="button" onClick={() => remove(index)}>Remove</button>
+        </div>
+      ))}
+
+      <button type="button" onClick={() => append({ value: '' })}>
+        Add skill
+      </button>
+
+      <button type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Submitting...' : 'Register'}
+      </button>
+    </form>
+  )
+}
+```
+
+<LivePreview id="forms-real-world" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Managing large forms entirely with controlled state by default.
+**Fix:** Use React Hook Form for real-world forms with many fields.
+**Why:** React Hook Form uses uncontrolled inputs under the hood and avoids many unnecessary re-renders.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Writing validation rules in one place and TypeScript types in another unrelated place.
+**Fix:** Define the Zod schema first and infer the TypeScript type from it.
+**Why:** One schema becomes the source of truth for both validation and types.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting accessibility when showing validation errors.
+**Fix:** Connect labels correctly and use `aria-describedby` to link errors to fields.
+**Why:** Screen reader users need the same validation context as sighted users.
+</Callout>
+
+<Callout type="tip">
+React Hook Form uses uncontrolled inputs under the hood — much better performance than controlled for large forms.
+</Callout>
+
+<Callout type="tip">
+Define your Zod schema first, infer the TypeScript type from it.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between React Hook Form and controlled form state?
+**A:** Controlled form state keeps every field value in React state and updates that state on every input change. React Hook Form uses uncontrolled inputs with refs under the hood, which usually means fewer re-renders and better performance for large forms while still giving strong validation and form-state tools.
+</Callout>
+
+## How this is used in real projects
+
+Production forms are usually much more than a few inputs and a submit button. Registration, checkout, onboarding, profile editing, billing, and admin workflows often need schema validation, async uniqueness checks, conditional sections, array fields, file uploads, step flows, and robust error feedback. This is where a form library and schema library save a huge amount of time and reduce bugs.
+
+React Hook Form is especially useful because it keeps the rendering model efficient even when the form grows large. Zod pairs well with it because the validation rules and the TypeScript model come from one place. That makes the form easier to trust, easier to refactor, and easier to review.
+
+Teams also care a lot about accessibility and resilience here. Good forms make it obvious what went wrong, how to fix it, and whether the form is submitting or dirty. Real-world quality comes from all of those details working together.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** Why is React Hook Form more performant than controlled form state?
+**A:** React Hook Form uses uncontrolled inputs with refs under the hood, so typing into a field does not always force the same kind of component re-render pattern that large controlled forms often create. This makes it especially efficient for large forms with many inputs.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is Zod and why do you use it with React Hook Form?
+**A:** Zod is a schema validation library. You use it with React Hook Form so one schema can define both the validation rules and the TypeScript type shape for the form. With `zodResolver`, React Hook Form can validate against the schema automatically.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is a field array?
+**A:** A field array is a dynamic list of repeating form fields, such as skills, addresses, or line items. React Hook Form provides `useFieldArray` to add, remove, and manage those rows without manually wiring all of the state by hand.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you handle async validation?
+**A:** Async validation usually runs in a `validate` function or submit flow that makes a request to check a server-side condition, such as whether a username is taken. The form should handle loading and race conditions carefully so stale validation results do not confuse the user.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What does React Hook Form use under the hood?"
+  options={[
+    "Controlled inputs with reducers",
+    "Uncontrolled inputs with refs",
+    "Only URL state",
+    "Only context providers"
+  ]}
+  correct={1}
+  explanation="React Hook Form primarily uses uncontrolled inputs with refs, which helps it avoid the same re-render cost that large controlled forms can create."
+/>
+
+<Quiz
+  question="What does zodResolver do?"
+  options={[
+    "It styles the form automatically",
+    "It connects Zod schema validation to React Hook Form",
+    "It uploads files to the server",
+    "It converts inputs into uncontrolled refs"
+  ]}
+  correct={1}
+  explanation="`zodResolver` connects a Zod schema to React Hook Form so form validation runs against the schema automatically."
+/>
+
+<MarkDone slug="22-forms-real-world" track="react" />

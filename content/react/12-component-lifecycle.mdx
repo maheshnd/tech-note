@@ -1,0 +1,475 @@
+---
+title: "Component lifecycle"
+description: "Learn the three lifecycle phases in functional React, how useEffect maps to mount, update, and unmount, and why cleanup and Strict Mode matter."
+level: "intermediate"
+minutes: 8
+stage: "Stage 3 — Hooks"
+slug: "12-component-lifecycle"
+track: "react"
+---
+
+## Why this exists
+
+Every React component has a life. It appears on the screen, updates as props or state change, and eventually disappears. If you do not understand that lifecycle, it becomes very hard to reason about effects, cleanup, timers, subscriptions, and browser event listeners.
+
+This matters because many bugs come from doing the right thing at the wrong time. Starting an interval is easy. Remembering to clear it when the component goes away is where mistakes happen. Adding a keyboard listener is easy. Removing it at the right time is what prevents duplicate listeners and memory leaks. Lifecycle knowledge is what helps you put code in the correct phase.
+
+In older React code, this topic was usually explained through class lifecycle methods like `componentDidMount`, `componentDidUpdate`, and `componentWillUnmount`. In modern React, functional components and hooks are the standard. The lifecycle still exists, but we work with it through rendering and `useEffect`.
+
+## How it works
+
+React component lifecycle in functional React is easiest to understand in three phases:
+
+- Mount: the component appears in the DOM for the first time.
+- Update: the component re-renders because its props changed, its state changed, or its parent rendered and gave it new inputs.
+- Unmount: the component is removed from the DOM.
+
+When people first learn lifecycle, they often imagine it as just "component appears, updates, disappears." That is useful, but React is doing more than that under the hood.
+
+When a component updates, React goes through two important stages:
+
+- Render phase: React calls your component function and figures out what the UI should look like. This phase should stay pure. You should not change the DOM here or start subscriptions here.
+- Commit phase: React applies changes to the real DOM. After the commit, effects can run because the screen is now in sync with the latest render.
+
+That separation explains why `useEffect` runs after rendering. Effects are for synchronization with systems outside React, such as timers, browser APIs, subscriptions, and network connections. Rendering is for describing UI. Effects are for syncing side effects after the UI is committed.
+
+The lifecycle mapping for `useEffect` looks like this:
+
+- `useEffect(() => {}, [])` acts like mount-only logic. It runs after the first commit.
+- `useEffect(() => {}, [dep])` acts like update logic for that dependency. It runs after mount and again whenever `dep` changes.
+- `return () => {}` inside an effect acts like unmount cleanup, and also runs before the effect runs again when dependencies change.
+
+That last point is important. Cleanup does not only happen when a component unmounts. Cleanup also runs before React reruns the same effect with new dependency values. This is how React prevents old subscriptions, timers, or listeners from piling up.
+
+Understanding lifecycle helps you prevent:
+
+- Memory leaks, such as intervals that keep running after a component is gone
+- Timing bugs, such as reading old values from a stale subscription
+- Duplicate side effects, such as attaching the same event listener more than once
+- Confusing development logs caused by Strict Mode
+
+Strict Mode adds one more detail. In development, React may intentionally mount a component, run its effects, clean them up, and mount it again. This double invocation helps surface bugs caused by missing cleanup or impure logic. It does not happen in production the same way. It is a development safety check, not a production bug.
+
+Here is the step-by-step version of a common lifecycle flow:
+
+1. React calls your component function during the render phase.
+2. React compares the new output with the previous output.
+3. React commits the necessary DOM changes.
+4. React runs effects whose dependencies say they should run.
+5. Later, state or props change.
+6. React renders again.
+7. Before rerunning an effect, React first runs the previous cleanup for that effect.
+8. React commits the new DOM updates.
+9. React runs the updated effect again.
+10. When the component is removed, React runs cleanup one final time.
+
+That is the lifecycle in functional React: render, commit, effect, cleanup, repeat when needed.
+
+## Syntax
+
+```tsx
+useEffect(() => {
+  // mount or update logic
+
+  return () => {
+    // cleanup before rerun or unmount
+  }
+}, [dependency])
+```
+
+## Code examples
+
+### Example 1 — Mount effect: log when component appears
+
+If you want logic to run only when the component first appears, use an empty dependency array.
+
+```tsx
+import { useEffect } from 'react'
+
+export default function MountLogger() {
+  useEffect(() => {
+    console.log('Component mounted')
+  }, [])
+
+  return <p>I log once when I first appear.</p>
+}
+```
+
+This effect runs after the component is first committed to the DOM.
+
+### Example 2 — Unmount cleanup: log when component is removed
+
+Cleanup becomes easier to understand when you can mount and unmount a child with a toggle.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function Child() {
+  useEffect(() => {
+    console.log('Child mounted')
+
+    return () => {
+      console.log('Child unmounted')
+    }
+  }, [])
+
+  return <p>I am visible right now.</p>
+}
+
+export default function ToggleChild() {
+  const [showChild, setShowChild] = useState(true)
+
+  return (
+    <section>
+      <button onClick={() => setShowChild((value) => !value)}>
+        {showChild ? 'Hide child' : 'Show child'}
+      </button>
+
+      {showChild ? <Child /> : <p>Child is hidden</p>}
+    </section>
+  )
+}
+```
+
+When you hide the child, React removes it from the DOM and runs the cleanup function.
+
+### Example 3 — Update effect: log when a specific prop changes
+
+Update effects run again when one of their dependencies changes.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function SearchStatus({ query }: { query: string }) {
+  useEffect(() => {
+    console.log('Query changed:', query)
+  }, [query])
+
+  return <p>Searching for: {query || 'nothing yet'}</p>
+}
+
+export default function SearchPage() {
+  const [query, setQuery] = useState('')
+
+  return (
+    <section>
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Type a search term"
+      />
+      <SearchStatus query={query} />
+    </section>
+  )
+}
+```
+
+The effect is tied specifically to `query`, so it reruns when `query` changes.
+
+### Example 4 — All three together: mount, update, and unmount
+
+This example shows the complete lifecycle in one place.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function LifecycleLogger({ count }: { count: number }) {
+  useEffect(() => {
+    console.log('Mounted')
+
+    return () => {
+      console.log('Unmounted')
+    }
+  }, [])
+
+  useEffect(() => {
+    console.log('Count updated:', count)
+  }, [count])
+
+  return <p>Count inside child: {count}</p>
+}
+
+export default function LifecycleDemo() {
+  const [count, setCount] = useState(0)
+  const [show, setShow] = useState(true)
+
+  return (
+    <section>
+      <button onClick={() => setCount((value) => value + 1)}>
+        Increment
+      </button>
+      <button onClick={() => setShow((value) => !value)}>
+        {show ? 'Unmount child' : 'Mount child'}
+      </button>
+
+      {show ? <LifecycleLogger count={count} /> : <p>Child removed</p>}
+    </section>
+  )
+}
+```
+
+This example helps you see the full sequence:
+
+- When the child first appears, mount runs.
+- When `count` changes, update logic runs.
+- When the child disappears, cleanup runs.
+
+### Example 5 — Strict Mode double invocation in development
+
+Many beginners think React is broken when they see mount logs twice in development. What is actually happening is Strict Mode testing your cleanup logic.
+
+```tsx
+import { useEffect } from 'react'
+
+export default function StrictModeExample() {
+  useEffect(() => {
+    console.log('Effect setup')
+
+    return () => {
+      console.log('Effect cleanup')
+    }
+  }, [])
+
+  return <p>Open the console in development.</p>
+}
+```
+
+In development with Strict Mode enabled, you may see:
+
+```txt
+Effect setup
+Effect cleanup
+Effect setup
+```
+
+React intentionally does this to help catch code that forgets cleanup or assumes effects run only once. In production, this extra development-only check does not behave the same way.
+
+### Example 6 — Real example: modal adds a keyboard listener and removes it
+
+This is a realistic lifecycle example because the listener should only exist while the modal is open.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+function Modal({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  return (
+    <div role="dialog" aria-modal="true">
+      <p>Press Escape to close this modal.</p>
+      <button onClick={onClose}>Close</button>
+    </div>
+  )
+}
+
+export default function ModalExample() {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <section>
+      <button onClick={() => setIsOpen(true)}>Open modal</button>
+      {isOpen ? <Modal onClose={() => setIsOpen(false)} /> : null}
+    </section>
+  )
+}
+```
+
+The listener is created on mount and removed on unmount. That is exactly the kind of synchronization `useEffect` is for.
+
+### Example 7 — Timer component: starts on mount, clears on unmount
+
+Intervals are one of the most common places where lifecycle mistakes happen.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export default function TimerComponent() {
+  const [seconds, setSeconds] = useState(0)
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setSeconds((value) => value + 1)
+    }, 1000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  return <p>Seconds passed: {seconds}</p>
+}
+```
+
+If you forget the cleanup, the interval can continue after the component should be gone.
+
+### Example 8 — API subscription: connect on mount, disconnect on unmount
+
+Subscriptions are another common lifecycle case. This example uses a fake subscription object to show the pattern clearly.
+
+```tsx
+import { useEffect, useState } from 'react'
+
+type Subscription = {
+  disconnect: () => void
+}
+
+function connectToNotifications(
+  roomId: string,
+  onMessage: (message: string) => void,
+): Subscription {
+  console.log('Connected to room:', roomId)
+
+  const intervalId = window.setInterval(() => {
+    onMessage(`New message in room ${roomId}`)
+  }, 3000)
+
+  return {
+    disconnect() {
+      window.clearInterval(intervalId)
+      console.log('Disconnected from room:', roomId)
+    },
+  }
+}
+
+export default function ChatSubscription() {
+  const [messages, setMessages] = useState<string[]>([])
+
+  useEffect(() => {
+    const subscription = connectToNotifications('react-room', (message) => {
+      setMessages((current) => [...current, message])
+    })
+
+    return () => {
+      subscription.disconnect()
+    }
+  }, [])
+
+  return (
+    <section>
+      <h3>Incoming messages</h3>
+      <ul>
+        {messages.map((message, index) => (
+          <li key={`${message}-${index}`}>{message}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+```
+
+The important part is not the fake API. The important part is the lifecycle pattern: connect during setup, disconnect during cleanup.
+
+<LivePreview id="lifecycle-logger" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Thinking `useEffect(() => {}, [])` means "runs once forever."
+**Fix:** Treat it as mount-time setup for that component instance.
+**Why:** If the component unmounts and mounts again later, the effect will run again for the new instance.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting cleanup for listeners, intervals, or subscriptions.
+**Fix:** Return a cleanup function from the effect.
+**Why:** Cleanup prevents memory leaks, duplicate listeners, and background work continuing after the component is gone.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Treating Strict Mode double logs as a React bug.
+**Fix:** Understand that development Strict Mode intentionally mounts, cleans up, and remounts.
+**Why:** React is testing whether your effect logic is safe and properly cleaned up.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Putting side effects directly in render.
+**Fix:** Keep render pure and move synchronization work into `useEffect`.
+**Why:** Render can run many times. Starting subscriptions or timers in render creates duplicate and unpredictable behavior.
+</Callout>
+
+<Callout type="note">
+Class component lifecycle methods still exist, but functional components with hooks are the modern React standard. You should understand the older terms because interviewers still use them, but write new code with hooks.
+</Callout>
+
+<Callout type="tip">
+Think of `useEffect` as synchronization. Ask: "What external thing should stay in sync with this state or prop?" That mindset is more accurate than thinking of effects as just lifecycle events.
+</Callout>
+
+<Callout type="warning">
+Strict Mode intentionally mounts and unmounts twice in development. This is not a bug. It is React helping you find unsafe side effects and missing cleanup.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you replicate `componentDidMount` with hooks?
+**A:** Use `useEffect(() => { ... }, [])`. That effect runs after the component first mounts. If the setup creates listeners, intervals, or subscriptions, return a cleanup function so the effect also behaves safely when the component unmounts.
+</Callout>
+
+## How this is used in real projects
+
+Lifecycle thinking is everywhere in production React code. When a dashboard widget loads, it may start polling or open a subscription on mount. When filters change, it may refetch or resubscribe on update. When the user leaves the page, the component unmounts and cleanup must stop background work.
+
+This also affects UI correctness. A modal should only listen for Escape while open. A chart should clean up resize listeners when removed. A page-level timer should stop when the screen is gone. A real app often has many small pieces of synchronization happening at once, and lifecycle understanding is what keeps that behavior predictable.
+
+Even performance debugging often comes back to lifecycle. If logs show repeated setup and cleanup, you need to know whether that is caused by dependency changes, unmounts, Strict Mode, or unnecessary parent renders. Lifecycle knowledge turns that from guesswork into reasoning.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What are the three phases of a React component lifecycle?
+**A:** The three lifecycle phases are mount, update, and unmount. Mount is when the component first appears in the DOM. Update is when the component re-renders because props or state changed. Unmount is when the component is removed from the DOM and cleanup runs.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you replicate `componentDidMount`, `componentDidUpdate`, and `componentWillUnmount` with hooks?
+**A:** `componentDidMount` is usually represented by `useEffect(() => { ... }, [])`, which runs after the first mount. `componentDidUpdate` is represented by `useEffect(() => { ... }, [dep])`, which reruns when the listed dependency changes. `componentWillUnmount` is represented by the cleanup function returned from an effect: `return () => { ... }`. That cleanup runs when the component unmounts, and also before the effect reruns due to dependency changes.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the React Strict Mode double invocation and why does it happen?
+**A:** In development, React Strict Mode may intentionally mount a component, run its effects, clean them up, and mount it again. This helps detect code with missing cleanup, unsafe side effects, or assumptions that effects only run once. It is a development-only safety mechanism, not a production bug.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between the render phase and the commit phase?
+**A:** In the render phase, React calls components and calculates what the UI should look like. This phase should stay pure and should not perform side effects. In the commit phase, React applies the calculated changes to the real DOM. After the commit phase, effects can run because the UI is now updated in the browser.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which useEffect pattern runs only on mount for a component instance?"
+  options={[
+    "useEffect(() => {})",
+    "useEffect(() => {}, [])",
+    "useEffect(() => {}, [value])",
+    "useEffect(value)"
+  ]}
+  correct={1}
+  explanation="An empty dependency array means the effect runs after the first mount of that component instance. It is the closest hook equivalent to componentDidMount."
+/>
+
+<Quiz
+  question="When does the cleanup function act like componentWillUnmount?"
+  options={[
+    "During the render phase",
+    "Only when state changes",
+    "When the component unmounts",
+    "Before JSX is returned"
+  ]}
+  correct={2}
+  explanation="The cleanup function acts like componentWillUnmount when the component is being removed from the DOM. It also runs before the effect reruns when dependencies change."
+/>
+
+<MarkDone slug="12-component-lifecycle" track="react" />

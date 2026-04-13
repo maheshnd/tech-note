@@ -1,0 +1,475 @@
+---
+title: "Conditional UI patterns"
+description: "Learn how to render loading, error, empty, and success states cleanly using guard clauses, ternaries, skeletons, and named UI states."
+level: "intermediate"
+minutes: 8
+stage: "Stage 3 — Hooks"
+slug: "14-conditional-ui-patterns"
+track: "react"
+---
+
+## Why this exists
+
+Most real interfaces do not show the same UI all the time. Sometimes data is still loading. Sometimes a request fails. Sometimes the request succeeds but returns nothing. Sometimes the UI is successful and ready to use. If you only learn how to render the happy path, your components become messy the moment real-world states appear.
+
+Conditional UI patterns exist so React components can handle different screen states clearly and predictably. Instead of stuffing many nested conditions into JSX and hoping it still makes sense later, you use a small set of patterns that keep the logic readable. This matters because loading, error, empty, and success states are not edge cases in real apps. They are normal states the UI must handle intentionally.
+
+This topic also matters for user experience. A blank screen during loading feels broken. A spinner with no context can feel slow. A missing empty state can make users think the app failed. Good conditional rendering is not only about code quality. It directly changes how polished the product feels.
+
+## How it works
+
+Conditional rendering means showing different UI based on current state. In React, this usually happens with standard JavaScript conditions such as `if`, ternaries, logical `&&`, and early returns.
+
+The simplest pattern is the guard clause. A guard clause is an early return that handles a special state before the main UI. For example, if data is loading, return a loading component immediately. If there is an error, return the error UI immediately. If the list is empty, return the empty state immediately. Then the main success UI can stay flat and readable instead of buried inside nested conditions.
+
+This is one reason guard clauses are so useful. They flatten complex logic. Instead of reading:
+
+- if loading, render this
+- else if error, render that
+- else if no data, render something else
+- else render the main screen
+
+You can simply return each special case early and let the main return focus on the success case.
+
+Ternaries are useful for small two-state UI. They work well when one condition chooses between two short outputs, such as showing "Login" or "Logout", or choosing one button label over another. If the JSX becomes large, a ternary quickly becomes hard to scan.
+
+The `&&` pattern is useful when you want to show something only when a condition is true and render nothing otherwise. For example, `isAdmin && <AdminPanel />`. This works best for small optional pieces of UI.
+
+When conditional logic becomes more complex, it is often cleaner to move it outside the JSX. You can use `if/else` before the return, or extract a `renderContent()` function that returns the correct UI. This gives names to the branches and makes the component easier to read.
+
+You will also hear about the four-state pattern for async UI:
+
+- idle: nothing has happened yet
+- loading: data is being requested
+- error: the request failed
+- success: the request completed successfully
+
+Naming these states explicitly is better than trying to manage everything with one `isLoading` boolean. A boolean can tell you that loading is happening, but it cannot express whether the request has not started yet, failed, or succeeded with empty data. Named states make the code much easier to reason about.
+
+Empty state is worth treating separately. A request can succeed and still return no data. That is not the same as loading or error. Empty UI should explain what happened and, when possible, tell the user what to do next.
+
+Skeleton UI and spinners both communicate loading, but they serve different purposes. A spinner is a generic sign that work is happening. A skeleton is a placeholder that looks like the final content shape. Skeletons usually feel faster because they set expectations about where content will appear and reduce layout shift. Spinners are still useful for short, small, or full-screen waiting states, but skeletons often create better perceived performance for content-heavy screens.
+
+An error boundary is related but slightly different from normal conditional UI. Loading and error states you control with state are expected parts of the app flow. An error boundary catches unexpected rendering errors in part of the React tree and shows fallback UI instead of crashing the entire screen. It is not a replacement for normal loading/error state handling, but it is part of building resilient UI.
+
+## Syntax
+
+```tsx
+if (loading) return <p>Loading...</p>
+if (error) return <p>Something went wrong.</p>
+if (items.length === 0) return <p>No items found.</p>
+
+return <ItemList items={items} />
+```
+
+## Code examples
+
+### Example 1 — Guard clause for loading
+
+Guard clauses keep the main UI flat by returning early for special cases.
+
+```tsx
+function UserPanel({
+  loading,
+}: {
+  loading: boolean
+}) {
+  if (loading) {
+    return <p>Loading user...</p>
+  }
+
+  return <p>User loaded.</p>
+}
+```
+
+This is cleaner than wrapping the whole success UI in an `else` block.
+
+### Example 2 — Guard clause for error
+
+Error UI is another good use case for an early return.
+
+```tsx
+function OrdersSection({
+  error,
+}: {
+  error: string
+}) {
+  if (error) {
+    return <p>Could not load orders: {error}</p>
+  }
+
+  return <p>Orders ready.</p>
+}
+```
+
+If there is an error, return it immediately and stop there.
+
+### Example 3 — Guard clause for empty
+
+An empty result is not a loading state and not an error state. It deserves its own UI.
+
+```tsx
+function NotificationsList({
+  notifications,
+}: {
+  notifications: string[]
+}) {
+  if (notifications.length === 0) {
+    return <p>No notifications yet.</p>
+  }
+
+  return (
+    <ul>
+      {notifications.map((notification) => (
+        <li key={notification}>{notification}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+This makes it clear that the request succeeded but there is nothing to show.
+
+### Example 4 — Ternary for simple two-state UI
+
+Ternaries are best for short yes-or-no UI branches.
+
+```tsx
+import { useState } from 'react'
+
+export default function LoginButton() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  return (
+    <button onClick={() => setIsLoggedIn((value) => !value)}>
+      {isLoggedIn ? 'Logout' : 'Login'}
+    </button>
+  )
+}
+```
+
+This is short enough that the ternary stays readable.
+
+### Example 5 — `&&` for a single optional condition
+
+The `&&` pattern works well for optional UI that either exists or does not.
+
+```tsx
+function AdminTools({
+  isAdmin,
+}: {
+  isAdmin: boolean
+}) {
+  return (
+    <section>
+      <h2>Dashboard</h2>
+      {isAdmin && <button>Open admin tools</button>}
+    </section>
+  )
+}
+```
+
+If `isAdmin` is false, React renders nothing for that expression.
+
+### Example 6 — Multiple conditions with `if/else` outside JSX
+
+When there are several branches, `if/else` is often clearer than nested JSX conditions.
+
+```tsx
+type Status = 'draft' | 'review' | 'published'
+
+function StatusBadge({
+  status,
+}: {
+  status: Status
+}) {
+  let label = ''
+
+  if (status === 'draft') {
+    label = 'Draft'
+  } else if (status === 'review') {
+    label = 'In review'
+  } else {
+    label = 'Published'
+  }
+
+  return <span>{label}</span>
+}
+```
+
+This keeps the decision logic separate from the markup.
+
+### Example 7 — Render function for extracted conditional rendering
+
+If the JSX branches are larger, a named helper can make the component much easier to read.
+
+```tsx
+type PageState = 'loading' | 'error' | 'success'
+
+function ProfilePage({
+  state,
+}: {
+  state: PageState
+}) {
+  function renderContent() {
+    if (state === 'loading') {
+      return <p>Loading profile...</p>
+    }
+
+    if (state === 'error') {
+      return <p>Profile could not be loaded.</p>
+    }
+
+    return <p>Profile content is ready.</p>
+  }
+
+  return <section>{renderContent()}</section>
+}
+```
+
+This is useful when the main return would otherwise become noisy.
+
+### Example 8 — Skeleton UI
+
+Skeleton UI mimics the shape of the final content while data is loading.
+
+```tsx
+function ArticleSkeleton() {
+  return (
+    <section>
+      <div className="skeleton title" />
+      <div className="skeleton line" />
+      <div className="skeleton line" />
+      <div className="skeleton line short" />
+    </section>
+  )
+}
+```
+
+In a real app, these blocks would be styled to look like placeholder content. The important idea is that the layout already feels present, even before the data arrives.
+
+### Example 9 — Spinner vs skeleton
+
+Use the right loading UI for the right situation.
+
+```tsx
+function LoadingExample({
+  compact,
+}: {
+  compact: boolean
+}) {
+  if (compact) {
+    return <p>Saving...</p>
+  }
+
+  return (
+    <section>
+      <div className="skeleton card" />
+      <div className="skeleton card" />
+      <div className="skeleton card" />
+    </section>
+  )
+}
+```
+
+Small short-lived actions like saving a button click may only need a spinner or short loading label. Larger content areas often feel better with skeletons because they show the expected layout.
+
+### Example 10 — Four-state pattern
+
+This is the most useful mental model for async UI.
+
+```tsx
+type FetchState = 'idle' | 'loading' | 'error' | 'success'
+
+function SearchStatus({
+  state,
+}: {
+  state: FetchState
+}) {
+  if (state === 'idle') return <p>Type a query to begin.</p>
+  if (state === 'loading') return <p>Searching...</p>
+  if (state === 'error') return <p>Search failed.</p>
+
+  return <p>Search results loaded.</p>
+}
+```
+
+This makes each screen state explicit instead of trying to infer it from a single boolean.
+
+### Example 11 — Error boundary concept preview
+
+This example shows the idea of a crash fallback. It is a concept preview, not a full production error boundary implementation.
+
+```tsx
+function BrokenWidget({
+  shouldCrash,
+}: {
+  shouldCrash: boolean
+}) {
+  if (shouldCrash) {
+    throw new Error('Widget crashed')
+  }
+
+  return <p>Widget loaded successfully.</p>
+}
+
+function ErrorFallback() {
+  return <p>Something went wrong in this part of the UI.</p>
+}
+```
+
+An error boundary would catch that render error and show fallback UI instead of crashing the whole app tree.
+
+### Example 12 — Complete example: user profile with all four states
+
+This example puts the main patterns together in one component.
+
+```tsx
+type ProfileState = 'idle' | 'loading' | 'error' | 'success'
+
+type User = {
+  name: string
+  role: string
+}
+
+function UserProfile({
+  state,
+  user,
+}: {
+  state: ProfileState
+  user: User | null
+}) {
+  if (state === 'idle') {
+    return <p>Click load profile to begin.</p>
+  }
+
+  if (state === 'loading') {
+    return (
+      <section>
+        <div className="skeleton title" />
+        <div className="skeleton line" />
+      </section>
+    )
+  }
+
+  if (state === 'error') {
+    return <p>Could not load profile. Please try again.</p>
+  }
+
+  if (!user) {
+    return <p>No profile data available.</p>
+  }
+
+  return (
+    <article>
+      <h2>{user.name}</h2>
+      <p>{user.role}</p>
+    </article>
+  )
+}
+```
+
+Notice how each state is clear and independent:
+
+- idle explains what to do
+- loading shows placeholder UI
+- error explains failure
+- success renders the actual data
+
+<LivePreview id="conditional-ui" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Nesting multiple ternaries directly in JSX.
+**Fix:** Use guard clauses or extract a render helper when conditions grow.
+**Why:** Nested ternaries quickly become hard to scan and easy to break.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Treating empty state as the same thing as loading.
+**Fix:** Handle empty state as its own branch.
+**Why:** A request that succeeds with zero results needs different messaging than a request that is still in progress.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using only one `isLoading` boolean for every async state.
+**Fix:** Name your states clearly, such as `idle`, `loading`, `error`, and `success`.
+**Why:** Explicit state names make impossible combinations easier to avoid and make the UI logic much easier to read.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Showing only a spinner for large content layouts.
+**Fix:** Consider skeleton UI for content-heavy screens.
+**Why:** Skeletons set expectations about the final layout and often feel faster to users.
+</Callout>
+
+<Callout type="tip">
+Use guard clauses to flatten deeply nested conditionals.
+</Callout>
+
+<Callout type="tip">
+Name your states — `idle`, `loading`, `error`, `success` — instead of just `isLoading` boolean.
+</Callout>
+
+<Callout type="tip">
+Skeleton UI feels faster than spinners because it sets expectations about content shape.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you handle loading, error, and success states in React?
+**A:** The cleanest approach is to explicitly represent each screen state and render different UI for each one. Guard clauses are especially useful here because they let you return loading, error, and empty UI early, leaving the success path easy to read. For async screens, a four-state model like `idle`, `loading`, `error`, and `success` is clearer than relying only on booleans.
+</Callout>
+
+## How this is used in real projects
+
+Conditional UI patterns show up everywhere in production apps. A dashboard may show skeleton cards while analytics load. A list page may show an empty state when filters return no results. A checkout form may disable a submit button and show a saving spinner during submission. A profile screen may show an error banner when the request fails and a retry action below it.
+
+These patterns are also part of making apps feel trustworthy. Users need clear feedback about what is happening. If the UI explains whether the system is waiting, broken, empty, or successful, the product feels stable. If it shows the wrong state or no state, users lose confidence quickly.
+
+Error boundaries matter in larger apps too. If one widget crashes, you often want just that widget to fail gracefully while the rest of the page stays usable. That is different from normal loading and error state handling, but together they form the foundation of resilient UI.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What is a guard clause and when do you use it in React?
+**A:** A guard clause is an early return that handles a special case before the main logic continues. In React, guard clauses are commonly used for loading, error, unauthorized, and empty states. They keep the main success UI flatter and easier to read because you do not need deep nesting inside the final return.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is skeleton UI and when would you use it instead of a spinner?
+**A:** Skeleton UI is a placeholder that mimics the shape of the final content while data is loading. It is often better than a spinner for content-heavy areas like cards, lists, or profile screens because it sets user expectations about layout and usually feels faster. A spinner is still useful for small or short-lived actions where full placeholder layout would be unnecessary.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the four-state pattern for async data?
+**A:** The four-state pattern models async UI as `idle`, `loading`, `error`, and `success`. `Idle` means the request has not started yet. `Loading` means work is in progress. `Error` means the request failed. `Success` means the request completed successfully. This is clearer than a single boolean because it reflects the real lifecycle of asynchronous UI.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is a guard clause?"
+  options={[
+    "A CSS class used for hiding UI",
+    "An early return that handles an edge case before the main logic",
+    "A hook that prevents re-renders",
+    "A way to memoize conditional JSX"
+  ]}
+  correct={1}
+  explanation="A guard clause is an early return that handles a special case like loading, error, or empty state before the main UI branch."
+/>
+
+<Quiz
+  question="Which is generally better UX for loading content-heavy layouts?"
+  options={[
+    "Skeleton",
+    "Spinner",
+    "Alert dialog",
+    "Empty state"
+  ]}
+  correct={0}
+  explanation="Skeleton UI is often better for content-heavy layouts because it shows the expected shape of the final content and makes the interface feel faster and more stable."
+/>
+
+<MarkDone slug="14-conditional-ui-patterns" track="react" />

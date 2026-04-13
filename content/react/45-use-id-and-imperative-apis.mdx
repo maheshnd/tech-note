@@ -1,0 +1,303 @@
+---
+title: "useId and imperative React APIs"
+description: "Learn why useId matters for accessibility, when refs and imperative handles are appropriate, and how to avoid replacing good declarative patterns with unnecessary imperative control."
+level: "intermediate"
+minutes: 10
+stage: "Stage 7 — Modern React"
+slug: "45-use-id-and-imperative-apis"
+track: "react"
+---
+
+## Why this exists
+
+React encourages a declarative model: data changes, and the UI updates to match. That is the right default. But real apps still have a few problems that need lower-level coordination. Inputs need proper labels and help text connections. A modal may need to focus the first field when it opens. A parent might need to trigger a child field to focus after validation fails.
+
+`useId` solves the accessibility side of that problem. It gives you a stable unique ID you can safely use to connect labels, descriptions, and error messages inside reusable components. Without it, teams often hardcode IDs, duplicate IDs accidentally, or build fields that look fine but are poorly connected for assistive technology.
+
+Imperative APIs solve a different problem. Sometimes a parent truly does need to ask a child component to do something specific, like `focus()` or `clear()`. React gives you refs and `useImperativeHandle` for those escape hatches. The key is to use them carefully. Imperative control should be a small exception, not the main architecture of the app.
+
+## How it works
+
+`useId` returns a stable unique string for the current component instance. The main use case is accessibility wiring. For example:
+
+- a `<label>` uses `htmlFor`
+- the input uses a matching `id`
+- help text and error text are connected with `aria-describedby`
+
+This matters because reusable field components may appear many times on the same page. If you hand-write IDs, collisions become easy. `useId` lets each component instance generate its own safe base ID.
+
+Refs are different. A ref gives you a way to hold onto a mutable value that does not cause re-renders. When a ref points to a DOM node, you can call methods like `focus()` or inspect the element. That is useful for focus management, measurement, or integrating with non-React APIs.
+
+`useImperativeHandle` builds on top of refs. Instead of exposing the entire child DOM structure to the parent, the child can expose a very small imperative API. For example, a parent may only need `focus()` and `clear()`. That is much safer than letting the parent reach deep inside the child’s internal DOM.
+
+The mental model is:
+
+- use `useId` for stable accessible ID relationships
+- use a DOM ref when you need direct access to one element
+- use `useImperativeHandle` when a child should expose a tiny controlled imperative API to the parent
+
+But the bigger rule is still important: if state and props can solve the problem cleanly, prefer that. Imperative APIs are escape hatches, not the main design style.
+
+## Syntax
+
+```tsx
+const inputId = useId()
+
+return (
+  <>
+    <label htmlFor={inputId}>Email</label>
+    <input id={inputId} />
+  </>
+)
+```
+
+```tsx
+useImperativeHandle(ref, () => ({
+  focus() {
+    inputRef.current?.focus()
+  },
+}))
+```
+
+## Code examples
+
+### Example 1 — Accessible input with `useId`
+
+This is the most common and most important `useId` use case.
+
+```tsx
+import { useId } from 'react'
+
+export default function EmailField() {
+  const inputId = useId()
+  const helpId = `${inputId}-help`
+
+  return (
+    <div>
+      <label htmlFor={inputId}>Email address</label>
+      <input id={inputId} aria-describedby={helpId} type="email" />
+      <p id={helpId}>Use your work email address.</p>
+    </div>
+  )
+}
+```
+
+The label, input, and help text are now correctly connected without hardcoding a shared global ID string.
+
+### Example 2 — Field group with shared generated IDs
+
+A reusable field component often needs more than one related ID.
+
+```tsx
+import { useId, useState } from 'react'
+
+export default function PasswordField() {
+  const baseId = useId()
+  const helpId = `${baseId}-help`
+  const errorId = `${baseId}-error`
+  const [value, setValue] = useState('')
+
+  const hasError = value.length > 0 && value.length < 8
+
+  return (
+    <div>
+      <label htmlFor={baseId}>Password</label>
+      <input
+        id={baseId}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        aria-describedby={hasError ? `${helpId} ${errorId}` : helpId}
+        aria-invalid={hasError}
+        type="password"
+      />
+      <p id={helpId}>Use at least 8 characters.</p>
+      {hasError ? <p id={errorId}>Password is too short.</p> : null}
+    </div>
+  )
+}
+```
+
+This is a very realistic pattern in forms because the component can generate all related IDs from one stable base.
+
+### Example 3 — Exposing `focus()` with `useImperativeHandle`
+
+Sometimes a parent needs to focus a field inside a child component.
+
+```tsx
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+} from 'react'
+
+interface SearchInputHandle {
+  focus: () => void
+}
+
+const SearchInput = forwardRef<SearchInputHandle>(function SearchInput(_, ref) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useImperativeHandle(ref, () => ({
+    focus() {
+      inputRef.current?.focus()
+    },
+  }))
+
+  return <input ref={inputRef} placeholder="Search policies" />
+})
+```
+
+The parent does not need to know anything about the child’s internal markup. It only gets a tiny `focus()` API.
+
+### Example 4 — Parent controlling a child input with an imperative handle
+
+Now the parent can use that child API intentionally.
+
+```tsx
+import { useRef } from 'react'
+
+interface SearchInputHandle {
+  focus: () => void
+}
+
+export default function SearchScreen() {
+  const searchRef = useRef<SearchInputHandle | null>(null)
+
+  return (
+    <section>
+      <button type="button" onClick={() => searchRef.current?.focus()}>
+        Focus search
+      </button>
+      <SearchInput ref={searchRef} />
+    </section>
+  )
+}
+```
+
+This pattern is useful for focus management after submit, after opening a panel, or after a validation failure.
+
+### Example 5 — When imperative code should be replaced with declarative state
+
+Not every UI action needs an imperative handle. Sometimes state is cleaner.
+
+```tsx
+import { useState } from 'react'
+
+export default function ProfileDetails() {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <section>
+      <button type="button" onClick={() => setExpanded((value) => !value)}>
+        {expanded ? 'Hide details' : 'Show details'}
+      </button>
+
+      {expanded ? <p>Extra profile information</p> : null}
+    </section>
+  )
+}
+```
+
+You could build an imperative `open()` and `close()` API here, but that would be worse. Visibility is ordinary UI state, so it should stay declarative.
+
+<LivePreview id="use-id-imperative" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Hardcoding reusable field IDs like `"email-input"` in components used more than once.
+**Fix:** Use `useId` to generate stable instance-safe IDs.
+**Why:** Duplicate IDs break accessibility relationships and create invalid HTML.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Using refs for ordinary UI state like whether a panel is open.
+**Fix:** Use state and conditional rendering unless you truly need imperative control.
+**Why:** State is easier to reason about, test, and keep in sync with the UI.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Exposing too much internal child behavior through `useImperativeHandle`.
+**Fix:** Expose the smallest useful API, such as `focus()` or `clear()`.
+**Why:** A narrow API keeps the child component easier to change and safer to reuse.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Passing refs around when a callback prop or declarative state would be clearer.
+**Fix:** Treat imperative handles as escape hatches, not the default communication path.
+**Why:** Overusing imperative control makes React code harder to follow and less predictable.
+</Callout>
+
+<Callout type="tip">
+If your component is building labels, help text, and error text, `useId` is often the cleanest way to make those relationships accessible without leaking ID choices to the parent.
+</Callout>
+
+## How this is used in real projects
+
+In production apps, `useId` appears most often inside reusable form controls and accessible UI primitives. A design system input, combobox, checkbox group, radio group, or dialog title component usually needs stable IDs to wire labels, descriptions, and errors correctly. The parent should not have to manually invent and pass multiple IDs every time, so `useId` keeps the field component self-contained and safer to reuse.
+
+Imperative APIs show up in smaller, more targeted moments. A real application may need to focus the first invalid field after submit, move focus into a modal when it opens, clear a search box after a saved filter is applied, or scroll a selected item into view. Those are good cases for a tiny imperative handle. In strong production code, the API is intentionally small and tied to a real UI coordination need.
+
+The biggest production lesson is architectural restraint. Teams that use imperative handles for everything often recreate the same complexity React is trying to reduce. The better path is to stay declarative by default and only drop to imperative control when you are coordinating focus, measurement, or external integration.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** What problem does `useId` solve?
+**A:** `useId` solves the problem of generating stable unique IDs inside reusable React components, especially for accessibility relationships. It is commonly used to connect labels, help text, and error text to form fields without hardcoding IDs that may collide. This makes reusable field components safer and easier to compose. The key idea is not just uniqueness, but correct accessible wiring.
+</Callout>
+
+<Callout type="interview">
+**Q:** When should you use `useImperativeHandle`?
+**A:** You should use `useImperativeHandle` when a child component needs to expose a very small imperative API to a parent, such as `focus()`, `clear()`, or `scrollIntoView()`. It is useful when direct coordination is required and declarative state alone is awkward. But it should stay narrow and intentional. If props and state can model the problem cleanly, they are usually the better choice.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between a ref to a DOM node and an imperative handle?
+**A:** A DOM ref gives access directly to an actual rendered element, including native methods and properties like `focus()` or `value`. An imperative handle lets the child expose a custom API instead of exposing its full internal DOM structure. That creates a cleaner boundary between parent and child. The parent gets only what it needs, and the child stays more encapsulated.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why should imperative APIs stay small in React?
+**A:** Large imperative APIs create tight coupling between parent and child components. Once a parent starts depending on many internal child behaviors, the child becomes harder to refactor and reuse. Small APIs keep the escape hatch focused on one real coordination need, such as focus management. That preserves React’s declarative design for the rest of the component behavior.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is the main use case for `useId`?"
+  options={[
+    "Generating random numbers for animations",
+    "Linking accessible labels, descriptions, and errors to a field",
+    "Replacing state in forms",
+    "Creating route params"
+  ]}
+  correct={1}
+  explanation="`useId` is mainly used to generate stable IDs that connect accessible relationships like label-to-input and help text-to-input."
+/>
+
+<Quiz
+  question="When is `useImperativeHandle` most appropriate?"
+  options={[
+    "For every child-to-parent interaction",
+    "When a child should expose a small escape-hatch API like focus()",
+    "To manage whether a section is expanded",
+    "To replace callback props everywhere"
+  ]}
+  correct={1}
+  explanation="`useImperativeHandle` is best for small intentional imperative APIs, not as a replacement for normal declarative communication."
+/>
+
+<Quiz
+  question="Which is usually better for showing or hiding UI sections?"
+  options={[
+    "A ref with open() and close() methods",
+    "Declarative state and conditional rendering",
+    "An imperative handle on every child",
+    "A DOM query selector"
+  ]}
+  correct={1}
+  explanation="Visibility is ordinary UI state, so state and conditional rendering are the clearer and more React-friendly solution."
+/>
+
+<MarkDone slug="45-use-id-and-imperative-apis" track="react" />

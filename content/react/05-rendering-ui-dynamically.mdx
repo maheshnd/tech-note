@@ -1,0 +1,622 @@
+---
+title: "Rendering UI dynamically"
+description: "Learn how React renders lists, conditionally shows different UI, handles empty/loading/error states, and updates classes and styles from data."
+level: "beginner"
+minutes: 11
+stage: "Stage 1 — Foundation"
+slug: "05-rendering-ui-dynamically"
+track: "react"
+---
+
+## Why this exists
+
+Real applications do not render the same screen every time. A dashboard may show a list of claims today, an empty state tomorrow, and an error message if the server fails. A tab may be active or inactive. A todo list may have completed items, pending items, or no items at all. Dynamic rendering is how React turns changing data into changing UI.
+
+Without dynamic rendering, React would not be very useful. You would only be able to build static pages that always look the same. The real power of React comes from rendering different output based on arrays, conditions, state, props, and fetched data. Once you understand this topic, your components start feeling like real application code instead of static examples.
+
+## How it works
+
+Dynamic rendering means your JSX changes based on JavaScript values. Sometimes you render a list by mapping over an array. Sometimes you render one element if a condition is true and a different element if it is false. Sometimes you render nothing at all by returning `null`. React does not need special "template language" syntax for this because JSX lives inside JavaScript. You use normal JavaScript ideas to decide what UI to describe.
+
+For lists, React usually uses `.map()` because `.map()` returns a new array of values, and React can render that array of JSX elements. `.forEach()` does not return a new array in the same useful way, which is why it is not the normal rendering tool. When rendering lists, each sibling needs a `key` prop so React can identify which item is which between renders.
+
+Keys are very important. A good key is stable, unique among siblings, and tied to the identity of the data, such as a database `id`. Using the array index as the key is usually wrong when items can be reordered, inserted, or deleted. React may then confuse one item with another, which can cause strange bugs like the wrong row keeping focus or the wrong state sticking to the wrong item.
+
+For conditions, React gives you several common patterns. A guard clause with `if` above the return is good when one condition decides the whole component. A ternary is good when you need one of two inline outputs. `&&` is useful for simple show-or-hide cases, but you have to be careful with values like `0` because `0 && <Thing />` can render `0` as text. Returning `null` is the standard way to render nothing.
+
+Dynamic rendering also includes empty states, loading states, and error states. A good UI does not just handle the happy path where data exists. It also clearly explains what is happening when there is no data, when data is loading, or when something failed. In real applications, these states matter just as much as the main success screen.
+
+Finally, dynamic rendering can affect `className` and inline styles too. A tab can get a different class when active. A progress bar can get a dynamic width based on a percentage. In general, dynamic class names are the most common solution, while dynamic inline styles are best for values like pixel sizes or widths that depend directly on runtime data.
+
+## Syntax
+
+```tsx
+function TodoList({ todos }: { todos: string[] }) {
+  return (
+    <ul>
+      {todos.map((todo) => (
+        <li key={todo}>{todo}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+## Code examples
+
+### Example 1 — Basic `.map()` over an array of strings
+
+The simplest form of dynamic rendering is turning an array into repeated UI.
+
+```tsx
+export default function App() {
+  const topics = ['JSX', 'Props', 'State']
+
+  return (
+    <ul>
+      {topics.map((topic) => (
+        <li key={topic}>{topic}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+`.map()` works because it returns a new array of JSX elements. React can render that array directly.
+
+### Example 2 — `.map()` over an array of objects
+
+Lists in real apps usually come from arrays of objects, not simple strings.
+
+```tsx
+type Policy = {
+  id: number
+  name: string
+  status: string
+}
+
+export default function App() {
+  const policies: Policy[] = [
+    { id: 1, name: 'Business liability', status: 'Active' },
+    { id: 2, name: 'Commercial auto', status: 'Pending' },
+  ]
+
+  return (
+    <section>
+      {policies.map((policy) => (
+        <article key={policy.id}>
+          <h2>{policy.name}</h2>
+          <p>{policy.status}</p>
+        </article>
+      ))}
+    </section>
+  )
+}
+```
+
+Each item uses its `id` as the key because that value identifies the data item itself.
+
+### Example 3 — Correct key vs incorrect key
+
+Keys help React track list items correctly between renders.
+
+```tsx
+type Todo = {
+  id: number
+  text: string
+}
+
+const todos: Todo[] = [
+  { id: 101, text: 'Review claim' },
+  { id: 102, text: 'Send email' },
+]
+
+export default function App() {
+  return (
+    <>
+      <h2>Correct key</h2>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>{todo.text}</li>
+        ))}
+      </ul>
+
+      <h2>Incorrect key</h2>
+      <ul>
+        {todos.map((todo, index) => (
+          <li key={index}>{todo.text}</li>
+        ))}
+      </ul>
+    </>
+  )
+}
+```
+
+Using `todo.id` is correct because it is stable. Using the index is risky if the list changes order or items are removed.
+
+### Example 4 — Nested lists
+
+Sometimes you need to render lists inside other lists.
+
+```tsx
+type Team = {
+  id: number
+  name: string
+  members: { id: number; name: string }[]
+}
+
+export default function App() {
+  const teams: Team[] = [
+    {
+      id: 1,
+      name: 'Claims',
+      members: [
+        { id: 11, name: 'Anita' },
+        { id: 12, name: 'Luis' },
+      ],
+    },
+    {
+      id: 2,
+      name: 'Billing',
+      members: [
+        { id: 21, name: 'Sara' },
+      ],
+    },
+  ]
+
+  return (
+    <section>
+      {teams.map((team) => (
+        <div key={team.id}>
+          <h2>{team.name}</h2>
+          <ul>
+            {team.members.map((member) => (
+              <li key={member.id}>{member.name}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  )
+}
+```
+
+Each list level needs its own keys among its own siblings.
+
+### Example 5 — Conditional rendering with `if` above the return
+
+When one condition decides the whole output, an early `if` is often the clearest choice.
+
+```tsx
+function AccessMessage({ isAdmin }: { isAdmin: boolean }) {
+  if (!isAdmin) {
+    return <p>You do not have access.</p>
+  }
+
+  return <p>Welcome, admin.</p>
+}
+
+export default function App() {
+  return <AccessMessage isAdmin={false} />
+}
+```
+
+This guard-clause style is very readable when the component has distinct overall branches.
+
+### Example 6 — Conditional rendering with a ternary
+
+Ternaries work well when you want one of two inline values.
+
+```tsx
+export default function App() {
+  const isLoggedIn = true
+
+  return (
+    <p>
+      {isLoggedIn ? 'Welcome back.' : 'Please sign in.'}
+    </p>
+  )
+}
+```
+
+This is a compact way to choose between two outputs inside JSX.
+
+### Example 7 — Conditional rendering with `&&` and the `0` bug fix
+
+`&&` is useful for simple show-or-hide cases, but watch out for numbers.
+
+```tsx
+export default function App() {
+  const unreadCount = 0
+
+  return (
+    <section>
+      <h2>Inbox</h2>
+      {unreadCount > 0 && <p>{unreadCount} unread messages</p>}
+    </section>
+  )
+}
+```
+
+If you wrote `unreadCount && <p>...</p>`, React would render `0` as text. Use `> 0` or `!!unreadCount` when the left side might be numeric.
+
+### Example 8 — Rendering `null`
+
+If nothing should appear, return `null`.
+
+```tsx
+function WarningBanner({ show }: { show: boolean }) {
+  if (!show) return null
+
+  return <p>Something needs attention.</p>
+}
+
+export default function App() {
+  return <WarningBanner show={false} />
+}
+```
+
+Returning `null` renders nothing at all, not even an empty placeholder element.
+
+### Example 9 — Empty state UI
+
+A good UI handles the case where the list is empty.
+
+```tsx
+export default function App() {
+  const claims: string[] = []
+
+  if (claims.length === 0) {
+    return <p>No claims yet. Create your first claim.</p>
+  }
+
+  return (
+    <ul>
+      {claims.map((claim) => (
+        <li key={claim}>{claim}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Empty states matter because "nothing to show" is still a real user experience that needs clear feedback.
+
+### Example 10 — Loading state
+
+Before data arrives, the UI often needs a loading state.
+
+```tsx
+export default function App() {
+  const isLoading = true
+
+  if (isLoading) {
+    return <p>Loading claims...</p>
+  }
+
+  return <p>Claims loaded.</p>
+}
+```
+
+Loading states let users know the app is working instead of appearing broken or blank.
+
+### Example 11 — Error state
+
+If something fails, the UI should explain that clearly.
+
+```tsx
+export default function App() {
+  const error = 'Failed to load claims'
+
+  if (error) {
+    return <p>{error}</p>
+  }
+
+  return <p>Claims loaded successfully.</p>
+}
+```
+
+Error states are essential in real apps because network and backend failures happen regularly.
+
+### Example 12 — Success state
+
+Once data is available, render the main UI.
+
+```tsx
+type Claim = {
+  id: number
+  title: string
+}
+
+export default function App() {
+  const claims: Claim[] = [
+    { id: 1, title: 'Windshield damage' },
+    { id: 2, title: 'Water leak' },
+  ]
+
+  return (
+    <ul>
+      {claims.map((claim) => (
+        <li key={claim.id}>{claim.title}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+This is the happy path, but it should usually live alongside loading and error handling too.
+
+### Example 13 — Dynamic `className`
+
+Classes can change based on state or props.
+
+```tsx
+export default function App() {
+  const activeTab = 'overview'
+
+  return (
+    <div>
+      <button className={activeTab === 'overview' ? 'tab active' : 'tab'}>
+        Overview
+      </button>
+      <button className={activeTab === 'billing' ? 'tab active' : 'tab'}>
+        Billing
+      </button>
+    </div>
+  )
+}
+```
+
+Dynamic classes are a common way to show active tabs, selected filters, validation states, and more.
+
+### Example 14 — Dynamic inline style
+
+Inline styles are acceptable when a value depends directly on runtime data.
+
+```tsx
+export default function App() {
+  const percentComplete = 65
+
+  return (
+    <div style={{ width: '240px', border: '1px solid #ccc' }}>
+      <div
+        style={{
+          width: `${percentComplete}%`,
+          height: '12px',
+          backgroundColor: 'green',
+        }}
+      />
+    </div>
+  )
+}
+```
+
+Using inline styles for a dynamic width like this is reasonable because the value comes directly from data.
+
+### Example 15 — Filtering before rendering
+
+Often you should prepare the data first, then render it.
+
+```tsx
+type Todo = {
+  id: number
+  text: string
+  done: boolean
+}
+
+export default function App() {
+  const todos: Todo[] = [
+    { id: 1, text: 'Read docs', done: true },
+    { id: 2, text: 'Build feature', done: false },
+    { id: 3, text: 'Ship update', done: true },
+  ]
+
+  const completedTodos = todos.filter((todo) => todo.done)
+
+  return (
+    <ul>
+      {completedTodos.map((todo) => (
+        <li key={todo.id}>{todo.text}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Filtering before `.map()` keeps the JSX cleaner and easier to understand.
+
+### Example 16 — Sorting before rendering
+
+Sorting should also usually happen before the JSX return.
+
+```tsx
+export default function App() {
+  const names = ['Zara', 'Anita', 'Luis']
+
+  const sortedNames = [...names].sort((a, b) => a.localeCompare(b))
+
+  return (
+    <ul>
+      {sortedNames.map((name) => (
+        <li key={name}>{name}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Prepare the data first, then render the already-sorted array.
+
+### Example 17 — A complete todo list example
+
+This example combines several dynamic rendering ideas in one small UI.
+
+```tsx
+type Todo = {
+  id: number
+  text: string
+  done: boolean
+}
+
+function EmptyState() {
+  return <p>No todos yet. Add your first task.</p>
+}
+
+function TodoSection({
+  title,
+  todos,
+}: {
+  title: string
+  todos: Todo[]
+}) {
+  if (todos.length === 0) return null
+
+  return (
+    <section>
+      <h2>{title}</h2>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>{todo.text}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+export default function App() {
+  const todos: Todo[] = [
+    { id: 1, text: 'Review claim', done: false },
+    { id: 2, text: 'Send follow-up email', done: true },
+    { id: 3, text: 'Update policy notes', done: false },
+  ]
+
+  if (todos.length === 0) {
+    return <EmptyState />
+  }
+
+  const activeTodos = todos.filter((todo) => !todo.done)
+  const completedTodos = todos.filter((todo) => todo.done)
+
+  return (
+    <div>
+      <TodoSection title="Active items" todos={activeTodos} />
+      <TodoSection title="Completed items" todos={completedTodos} />
+    </div>
+  )
+}
+```
+
+This shows list rendering, filtering, empty states, and rendering nothing for empty sections with `null`.
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Using the array index as a key.
+**Fix:** Use a stable unique identifier from the data, like `id`.
+**Why:** Index keys break when items are reordered, inserted, or deleted, which can cause React to confuse one item with another.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Forgetting to return inside `.map()`.
+**Fix:** Make sure the callback returns JSX for each item.
+**Why:** If the callback does not return anything, React gets an array of `undefined` values and nothing useful renders.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Writing `0 && <Component />` and expecting nothing.
+**Fix:** Use `count > 0 && <Component />` or `!!count && <Component />`.
+**Why:** `0` is a renderable value, so React may display it as text.
+</Callout>
+
+<Callout type="tip">
+Filter and sort the array before calling `.map()`. Keeping data preparation outside the JSX makes rendering logic cleaner and easier to debug.
+</Callout>
+
+<Callout type="tip">
+Extract empty states, loading states, and error states into named components when the UI gets larger. That keeps the main render path much easier to read.
+</Callout>
+
+<Callout type="warning">
+Keys must be stable, unique among siblings, and tied to the identity of the data. A key that changes between renders defeats the whole purpose of the key.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why does React need a key prop for lists?
+**A:** React uses keys to identify which rendered list item matches which data item between renders. This helps React update the UI correctly when items are added, removed, or reordered. Without stable keys, React may reuse the wrong DOM nodes or component instances. Good keys make list updates more predictable and less error-prone.
+</Callout>
+
+## How this is used in real projects
+
+Dynamic rendering is at the center of almost every real React screen. A dashboard might render a list of policies, highlight the selected row, show an empty state when there are no results, and switch to a loading spinner during a refetch. A claims page might filter items by status, sort them by date, and show different actions depending on whether a claim is pending, approved, or rejected. None of that would work without dynamic rendering.
+
+Lists and conditional states are also where many production bugs appear. Using unstable keys can cause weird row behavior. Forgetting proper loading and error states can leave the UI confusing or blank. Rendering conditions carelessly can show incorrect counts or misleading empty states. That is why teams treat dynamic rendering as a core skill, not just a beginner exercise.
+
+In larger codebases, developers often extract list items, empty states, loading components, and error views into named components so the main screen stays readable. That pattern scales well because it separates the main decision-making logic from the smaller pieces of UI being rendered.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** Why does React need a key prop when rendering lists?
+**A:** React needs a key so it can match each rendered item with the correct piece of data between renders. This is especially important when items are inserted, removed, or reordered. Stable keys help React preserve the right DOM nodes and component state for the right items. Without proper keys, list updates can become buggy and unpredictable.
+</Callout>
+
+<Callout type="interview">
+**Q:** Why should you not use array index as a key?
+**A:** Using the array index as a key is risky because the index changes when items are reordered, inserted, or deleted. React may then think one item is another item, which can cause UI bugs such as wrong input focus, wrong animations, or wrong local state sticking to the wrong row. If the list is truly static and never changes, index keys may not break anything, but in real apps that is often not the case. A stable `id` from the data is usually the better choice.
+</Callout>
+
+<Callout type="interview">
+**Q:** What are all the ways to do conditional rendering in React?
+**A:** Common patterns include `if` statements above the return, guard clauses with early returns, ternary expressions inside JSX, `&&` for simple show-or-hide cases, and returning `null` when nothing should render. Each pattern is useful in different situations. `if` and guard clauses are good for larger branches, ternaries are good for choosing between two inline results, and `&&` is good for simple optional sections. Returning `null` is the standard way to render nothing.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is an empty state and why is it important in UI?
+**A:** An empty state is the UI shown when there is currently no data to display, such as no search results, no tasks, or no claims yet. It is important because "nothing here" is still a real user experience that needs explanation and guidance. A good empty state reduces confusion and often helps the user understand what to do next. Without it, the page may look broken or unfinished.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is the difference between `.map()` and `.forEach()` for rendering?
+**A:** `.map()` returns a new array, which makes it perfect for turning an array of data into an array of JSX elements. `.forEach()` does not return the transformed array in the same useful way, so it is not the normal rendering tool in React. React expects values to render, and `.map()` naturally produces those values. That is why `.map()` is the standard method for rendering lists.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="What is the problem with using array index as a key?"
+  options={[
+    "It makes the app load slower on first render",
+    "It breaks when items are reordered or deleted",
+    "It only works in TypeScript",
+    "It prevents JSX from compiling"
+  ]}
+  correct={1}
+  explanation="Array index keys are unstable when the list changes shape. That can cause React to attach the wrong DOM or component state to the wrong item."
+/>
+
+<Quiz
+  question="Which method do you use to render a list in React?"
+  options={[
+    ".forEach()",
+    ".filter()",
+    ".map()",
+    ".reduce()"
+  ]}
+  correct={2}
+  explanation="`.map()` is the standard rendering method because it returns a new array of JSX elements that React can render."
+/>
+
+<Quiz
+  question="What does rendering `null` do in React?"
+  options={[
+    "It throws an error",
+    "It renders an empty div",
+    "It renders nothing",
+    "It shows the word null"
+  ]}
+  correct={2}
+  explanation="Returning `null` tells React to render nothing at all for that branch or component."
+/>
+
+<MarkDone slug="05-rendering-ui-dynamically" track="react" />
+<LivePreview id="rendering-list" />

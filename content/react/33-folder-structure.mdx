@@ -1,0 +1,286 @@
+---
+title: "UI architecture & folder structure"
+description: "Learn how to structure a large React or Next.js codebase with route-driven folders, feature modules, shared UI, server/client utility separation, and a clean data access layer."
+level: "advanced"
+minutes: 10
+stage: "Stage 6 — Advanced"
+slug: "33-folder-structure"
+track: "react"
+---
+
+## Why this exists
+
+Small projects can survive messy folder structures for a while. Large projects cannot. Once an app grows to dozens of routes, multiple teams, shared UI patterns, and a real data layer, file organization stops being a cosmetic preference and becomes an engineering decision.
+
+Bad structure creates slow onboarding, duplicated logic, accidental imports across boundaries, and a codebase where nobody knows where new files should go. Good structure does the opposite. It makes feature ownership clearer, reduces hunting time, and protects important boundaries like server-only code and shared design system components.
+
+This topic exists because advanced React work is not only about writing components well. It is also about organizing the codebase so that those components remain understandable six months later.
+
+## How it works
+
+The first useful idea is route-driven structure. In a framework like Next.js, routes often become the natural top-level organization because a route is already a stable product boundary. The code that only belongs to a specific route can live close to that route.
+
+Feature-driven modules solve a slightly different problem. Instead of grouping by file type like `components/`, `hooks/`, and `utils/` for the whole app, you group by feature such as `billing`, `auth`, or `dashboard`. This keeps the code for one feature together, which often scales better than global file-type buckets.
+
+Shared UI still matters too. Not everything belongs inside one feature. Truly reusable presentational pieces such as buttons, inputs, modals, tables, and layout primitives usually belong in a shared `components/` area.
+
+Server and client utilities should also be separated intentionally. Server utilities may include database access, private tokens, or filesystem work. Client utilities may include browser helpers, local formatting, and UI-only helpers. Keeping these separate makes accidental import problems less likely.
+
+Data layer separation is another big rule. Database queries, API clients, and data-access logic should not be scattered across random components. Keeping the data layer in one place makes it easier to test, secure, and refactor.
+
+Co-location versus centralization is not an all-or-nothing choice. Co-locate files when they belong tightly to one route or feature. Centralize them when they are truly shared. Strong teams do both on purpose instead of choosing one rule for everything.
+
+Server-only code needs discipline. If private data helpers are mixed casually with client components, it becomes easier to leak secrets or create import confusion. Clear folder boundaries plus tools like `server-only` help enforce the right separation.
+
+The core question is always the same: if this app grows to 50 or 100 routes, will the current structure still help new work happen quickly, or will it turn into a maze?
+
+## Syntax
+
+```txt
+src/
+  app/
+  components/
+  features/
+  lib/
+```
+
+## Code examples
+
+### Example 1 — Route-driven structure
+
+This is a strong fit when route boundaries are the main way the product is organized.
+
+```txt
+src/
+  app/
+    dashboard/
+      page.tsx
+      loading.tsx
+      error.tsx
+      _components/
+        RevenueCard.tsx
+        ActivityChart.tsx
+      _lib/
+        getDashboardData.ts
+    settings/
+      page.tsx
+      _components/
+        ProfileForm.tsx
+```
+
+This works well because route-specific UI and helpers stay near the route that owns them.
+
+### Example 2 — Feature module with co-location
+
+This is strong when a feature contains components, utilities, and types that mostly belong together.
+
+```txt
+src/
+  features/
+    billing/
+      components/
+        InvoiceTable.tsx
+        InvoiceFilters.tsx
+      lib/
+        getInvoices.ts
+        formatInvoiceStatus.ts
+      hooks/
+        useInvoiceFilters.ts
+      types.ts
+```
+
+This pattern reduces the “where does this billing file go?” problem because the feature has one clear home.
+
+### Example 3 — Shared components folder structure
+
+Not everything should be trapped inside one feature.
+
+```txt
+src/
+  components/
+    ui/
+      Button.tsx
+      Input.tsx
+      Modal.tsx
+      Badge.tsx
+    layout/
+      AppShell.tsx
+      Sidebar.tsx
+      TopBar.tsx
+```
+
+Use shared folders for pieces that are truly reused across many features.
+
+### Example 4 — Server lib vs client lib separation
+
+Private and browser-specific helpers should not live in one mixed bucket.
+
+```txt
+src/
+  lib/
+    client/
+      formatDate.ts
+      getThemeFromStorage.ts
+    server/
+      getSession.ts
+      getDashboardStats.ts
+      billingApi.ts
+```
+
+This makes ownership and import intent much clearer.
+
+### Example 5 — Data access layer in one place
+
+Queries and API access should be centralized instead of scattered across UI files.
+
+```txt
+src/
+  server/
+    db/
+      index.ts
+      schema.ts
+    repositories/
+      userRepository.ts
+      invoiceRepository.ts
+      lessonRepository.ts
+```
+
+```ts
+// src/server/repositories/userRepository.ts
+import { db } from '@/server/db'
+
+export async function getUserById(userId: string) {
+  return db.user.findUnique({
+    where: { id: userId },
+  })
+}
+```
+
+Now components can call a clear data access function instead of embedding database details everywhere.
+
+### Example 6 — A scalable hybrid structure
+
+Most real codebases mix route-driven and feature-driven ideas.
+
+```txt
+src/
+  app/
+    dashboard/
+      page.tsx
+      _components/
+        DashboardHeader.tsx
+    billing/
+      page.tsx
+  components/
+    ui/
+      Button.tsx
+      Input.tsx
+  features/
+    billing/
+      components/
+        InvoiceTable.tsx
+      lib/
+        getInvoices.ts
+  lib/
+    client/
+      cn.ts
+    server/
+      auth.ts
+  server/
+    repositories/
+      invoiceRepository.ts
+```
+
+This is often the most realistic answer: routes own route-specific files, features own feature logic, and shared layers stay centralized.
+
+<LivePreview id="folder-structure" />
+
+## Common mistakes
+
+<Callout type="mistake">
+**Mistake:** Grouping the whole app only by file type, such as one giant global `components/`, `hooks/`, and `utils/` set.
+**Fix:** Introduce route or feature boundaries where they make ownership clearer.
+**Why:** Pure file-type grouping becomes hard to navigate as the app grows.
+</Callout>
+
+<Callout type="mistake">
+**Mistake:** Mixing server-only helpers and browser helpers in one generic utility folder.
+**Fix:** Split server and client utilities clearly.
+**Why:** It reduces accidental import leaks and makes boundaries easier to maintain.
+</Callout>
+
+<Callout type="tip">
+Co-location is usually good when the file is only useful to one route or one feature. Centralization is better when the code is truly shared across the app.
+</Callout>
+
+<Callout type="note">
+There is no one perfect universal folder structure. The right structure is the one that stays understandable as the product and team grow.
+</Callout>
+
+## How this is used in real projects
+
+In real teams, folder structure usually evolves in stages. A small app may begin with a simple shared `components/` and a few route files. As the app grows, feature modules appear for areas like billing, onboarding, or analytics. Then server/client boundaries become more explicit because data access, auth helpers, and browser helpers need different treatment.
+
+The healthiest codebases usually avoid two extremes:
+
+- total sprawl, where every new file goes into a vague global folder
+- over-engineering, where the structure is so abstract that nobody knows where to place a simple component
+
+A scalable structure is not the most clever one. It is the one teammates can use consistently without friction.
+
+## Interview questions
+
+<Callout type="interview">
+**Q:** How do you structure a large React or Next.js app?
+**A:** I usually start with route boundaries, feature modules, and shared UI as separate concerns. Route-specific code stays near the route, feature logic stays inside feature modules, shared presentational components live centrally, and server-only data access stays isolated from client code. The goal is to make ownership obvious and keep the structure understandable as the app grows.
+</Callout>
+
+<Callout type="interview">
+**Q:** What is co-location and when do you use it?
+**A:** Co-location means keeping files close to the route or feature that uses them. I use it when a component, hook, or helper is tightly tied to one area of the app and is unlikely to be reused broadly. It reduces the need to hunt across the codebase for related files.
+</Callout>
+
+<Callout type="interview">
+**Q:** How do you keep server-only code from leaking to the client?
+**A:** I use clear folder separation for server utilities and data access, keep private logic in server-only modules, and avoid importing those modules into client components. In frameworks like Next.js, I also use tools such as `server-only` to enforce the boundary more explicitly.
+</Callout>
+
+## Quick check
+
+<Quiz
+  question="Which pattern usually scales better than one giant global `components/`, `hooks/`, and `utils/` setup?"
+  options={[
+    "Feature-driven or route-driven grouping",
+    "Putting every file in the project root",
+    "Naming files randomly",
+    "Only using one folder for all app code"
+  ]}
+  correct={0}
+  explanation="Feature-driven and route-driven structures usually scale better because they group related code by product ownership instead of only by file type."
+/>
+
+<Quiz
+  question="When is co-location usually the better choice?"
+  options={[
+    "When a file belongs tightly to one route or feature",
+    "When a file is reused everywhere",
+    "Only in tiny demo apps",
+    "Never"
+  ]}
+  correct={0}
+  explanation="Co-location is most helpful when a file mainly serves one route or feature and should stay close to that context."
+/>
+
+<Quiz
+  question="Why should server and client utilities often be split?"
+  options={[
+    "To make accidental boundary leaks less likely",
+    "To force more folders for no reason",
+    "Because React requires exactly two utility folders",
+    "Only to improve CSS loading"
+  ]}
+  correct={0}
+  explanation="Splitting server and client utilities makes responsibilities clearer and reduces the risk of importing private server logic into client code."
+/>
+
+<MarkDone slug="33-folder-structure" track="react" />
