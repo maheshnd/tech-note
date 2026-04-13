@@ -88,16 +88,6 @@ The Next.js config automatically applies the correct `basePath` when the site is
 https://maheshnd.github.io/tech-note/
 ```
 
-### One-time GitHub Pages setup
-
-In the GitHub repository:
-
-1. Go to `Settings`
-2. Open `Pages`
-3. Set `Source` to `GitHub Actions`
-
-After that, every push to `main` will deploy the latest static build.
-
 ## Notes
 
 - `out/` is generated build output and should not be committed manually
