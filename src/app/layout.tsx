@@ -34,10 +34,12 @@ export default function RootLayout({
       className={`${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable} h-full`}
       suppressHydrationWarning
     >
-      <body>
-        <div className="flex min-h-screen md:h-screen">
+      <body className="h-full overflow-hidden">
+        <div className="flex h-screen min-h-0 md:h-dvh">
           <Sidebar />
-          <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {children}
+          </main>
         </div>
       </body>
     </html>

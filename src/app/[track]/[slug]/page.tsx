@@ -57,7 +57,7 @@ export default async function TopicPage({
   const document = topic ? await loadTopicDocument(track, topic.slug) : null
 
   return (
-    <div className="flex min-h-screen flex-1 flex-col md:min-h-0">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <TopBar track={track} topic={topic} />
       <ContentErrorBoundary>
         <SplitPane
